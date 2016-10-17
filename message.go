@@ -7,6 +7,21 @@ type Message struct {
     data [64]byte
 }
 
+func NewMessage(id uint32, data []byte) {
+    m := &Message{id: id}
+    m.length = uint8(len(data))
+    copy(m.data[:],data)
+}
+
+func (m* Message) AppendData(data []byte) bool {
+    if m.length+len(data)>64 {
+        return false
+    }
+    copy(m.data[m.length:],data)
+    m.length+=len(data)
+    return true
+}
+
 func (m* Message) Node() Node {
     return Node((m.id>>22)&0x7F)
 }
@@ -44,25 +59,25 @@ func (m *Message) SetSysFunc(f uint8) {
 }
 
 func (m *Message) SetSysParam(p uint8) {
-    m.id &= ^0xFFFFFF00;
+    m.id &= 0xFFFFFF00;
     m.id |= uint32(p);
 }
 
 func (m *Message) Length() uint8 {
-    return m.Length;
+    return m.length;
 }
 
 func (m *Message) GetData() []byte {
-
+    return m.data[:]
 }
 
 func (m *Message) SetData(d []byte) {
     if len(d)>64 {
-        copy(m.Data[:],d[:64])
+        copy(m.data[:],d[:64])
         m.length = 64
     } else {
-        copy(m.Data[:],d)
-        m.length = len(d)
+        copy(m.data[:],d)
+        m.length = uint8(len(d))
     }
 }
 
