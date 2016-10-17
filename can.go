@@ -68,7 +68,7 @@ func (frame *CanFrame) Node() Node {
 type CanDriver struct {
     Conn net.Conn
     InputBuffer [128]*Message
-    OutputBuffer *Message
+    OutputBuffer Message
     PowerStatus struct {
         PowerOn bool
         PowerLevel uint16
@@ -104,7 +104,7 @@ func NewCanDriver(network, address string) (*CanDriver, error) {
     return &CanDriver{Conn: conn}
 }
 
-func (cd *CanDriver)ProcessInput() (*Message, error) {
+func (cd *CanDriver)ProcessInput(m *Message) (*Message, error) {
     var frame CanFrame
 
     if err:=ReadCanFrame(cd.Conn,&frame); err!=nil {
@@ -114,7 +114,8 @@ func (cd *CanDriver)ProcessInput() (*Message, error) {
     node := frame.Node()
     switch {
         case !frame.IsExtended(), frame.IsRemote():
-        // ERROR
+            Log(WARNING,"Got malformed frame, discarding.")
+            return nil, nil
         case frame.IsControl():
 
         case frame.IsError():
@@ -124,14 +125,14 @@ func (cd *CanDriver)ProcessInput() (*Message, error) {
                 if cd.InputBuffer[node]!= nil {
                     Log(WARNING,"Got frame with inconsistent first bit indicator, discarding.")
                     return nil, nil
-                } else {
-                    cd.InputBuffer[node] = NewMessage(fame.CanId, frame.CanData[:frame.CanDlc])
                 }
+                cd.InputBuffer[node] = NewMessage(fame.CanId, frame.CanData[:frame.CanDlc])
             } else {
                 if cd.InputBuffer[node]==nil {
-                    log(WARNING,"Got first frame with missing first bit indicator, discarding.);
+                    log(WARNING,"Got first frame with missing first bit indicator, discarding.");
+                    return nil, nil
                 }
-                cd.InputBuffer[node].Append(
+                cd.InputBuffer[node].Append(frame.CanData[:frame.CanDlc])
             }
             if frame.IsLast() {
                 retval := cd.InputBuffer[node]
@@ -143,7 +144,8 @@ func (cd *CanDriver)ProcessInput() (*Message, error) {
 }
 
 func (cd *CanDriver)ProcessOutput(m *Message) error {
-
+    cd.OutpuBuffer = *m
+    
 }
 
 func (cd *CanDriver)Close() {
