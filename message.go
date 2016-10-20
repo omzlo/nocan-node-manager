@@ -1,83 +1,68 @@
 package nocan
 
+import (
+    "fmt"
+)
+
 type Message struct {
-    channel Channel
-    id uint32
-    length uint8
-    data [64]byte
+    Port
+    Id CanId
+    Data []byte
 }
 
-func NewMessage(id uint32, data []byte) {
-    m := &Message{id: id}
-    m.length = uint8(len(data))
-    copy(m.data[:],data)
+func NewMessage(id CanId, data []byte) *Message {
+    m := &Message{Port: -1, Id: id, Data: make([]byte,0,64)}
+    m.Data = m.Data[:len(data)]
+    copy(m.Data, data)
+    return m
+}
+
+func NewMessageFromFrame(frame *CanFrame) *Message {
+    return NewMessage(frame.CanId&CANID_MASK_MESSAGE, frame.CanData[:frame.CanDlc])
+}
+
+func (m* Message) String() string {
+    s := fmt.Sprintf("{port:%d, %s, [",int(m.Port),m.Id)
+    for i:=0; i<len(m.Data); i++ {
+        if i>0 {
+            s+=" "
+        }
+        s += fmt.Sprintf("%02x",m.Data[i])
+    }
+    if !m.Id.IsSystem() {
+        s+=` - "`
+        for i:=0; i<len(m.Data); i++ {
+            if m.Data[i]>=32 && m.Data[i]<127 {
+                s+=string(m.Data[i])
+            } else {
+                s+=`.`
+            }
+        }
+        s+=`"`
+    }
+
+    return s + "]}"
 }
 
 func (m* Message) AppendData(data []byte) bool {
-    if m.length+len(data)>64 {
+    if len(m.Data)+len(data)>64 {
         return false
     }
-    copy(m.data[m.length:],data)
-    m.length+=len(data)
+    m.Data = append(m.Data, data...)
     return true
 }
 
-func (m* Message) Node() Node {
-    return Node((m.id>>22)&0x7F)
+func (m *Message) MatchSystemMessage(node Node, fn uint8) bool {
+    return m.Id.IsSystem() && m.Id.GetNode()==node && m.Id.GetSysFunc()==fn
 }
 
-func (m* Message) IsSystem() bool {
-    return ((m.id>>19)&1)==1
+func NewSystemMessage(node Node, fn uint8, param uint8, value []byte) *Message {
+    id := CanId(CANID_MASK_SYSTEM)
+    id.SetNode(node).SetSysFunc(fn).SetSysParam(param)
+    return NewMessage(id, value)
 }
 
-func (m *Message) GetChannel() Channel {
-    return m.channel
+func NewPublishMessage(node Node, topic Topic, value []byte) *Message {
+    id := CanId(0).SetNode(node).SetTopic(topic)
+    return NewMessage(id, value)
 }
-
-func (m* Message) GetTopic() Topic {
-    var i uint8
-    var base uint8 = uint8(((m.id>>16)&0x03)<<4);
-    for i=0; i<16; i++ {
-        if (m.id&(1<<i))!=0 {
-            return Topic(base+i)
-        }
-    }
-    return -1
-}
-
-func (m* Message) GetSysFunc() uint8 {
-    return uint8(m.id>>8)
-}
-
-func (m* Message) GetSysParam() uint8 {
-    return uint8(m.id)
-}
-
-func (m *Message) SetSysFunc(f uint8) {
-    m.id &= 0xFFFF00FF
-    m.id |= uint32(f)<<8
-}
-
-func (m *Message) SetSysParam(p uint8) {
-    m.id &= 0xFFFFFF00;
-    m.id |= uint32(p);
-}
-
-func (m *Message) Length() uint8 {
-    return m.length;
-}
-
-func (m *Message) GetData() []byte {
-    return m.data[:]
-}
-
-func (m *Message) SetData(d []byte) {
-    if len(d)>64 {
-        copy(m.data[:],d[:64])
-        m.length = 64
-    } else {
-        copy(m.data[:],d)
-        m.length = uint8(len(d))
-    }
-}
-

@@ -1,0 +1,113 @@
+package nocan
+
+type Channel int
+
+type ChannelEndpoint interface {
+	ProcessInput() (*Message, error)
+	ProcessOutput(*Message) error
+}
+
+type ChannelState struct {
+	Channel
+	Endpoint ChannelEndpoint
+	Output chan *Message
+}
+
+func (cs *ChannelState) GatherInput(input chan<- *Message) {
+	for {
+		m, err := cs.Endpoint.ProcessInput()
+		if err == nil {
+			if m != nil {
+				m.Channel = cs.Channel
+				input <- m
+			}
+		} else {
+			return
+		}
+	}
+}
+
+func (cs *ChannelState) DispatchOutput(output <-chan *Message) {
+	for {
+		m := <-output
+		err := cs.Endpoint.ProcessOutput(m)
+		if err != nil {
+			return
+		}
+	}
+}
+
+type ChannelModel struct {
+	LastChannel Channel
+	Input       chan *Message
+	Channels    []ChannelState
+}
+
+func NewChannelModel() *ChannelModel {
+	return &ChannelModel{Input: make(chan *Message, 16), Channels: make([]ChannelState, 0, 16)}
+}
+
+func (cm *ChannelModel) AddChannel(endpoint ChannelEndpoint) Channel {
+	retval := cm.LastChannel + 1
+	cm.LastChannel = retval
+	cm.Channels = append(cm.Channels, ChannelState{retval, endpoint, make(chan *Message, 16)})
+	return retval
+}
+
+func (cm *ChannelModel) ListenAndServe() {
+	for i := 0; i < len(cm.Channels); i++ {
+		go cm.Channels[i].GatherInput(cm.Input)
+		go cm.Channels[i].DispatchOutput(cm.Channels[i].Output)
+	}
+	for {
+		select {
+		case m := <-cm.Input:
+			for i := 0; i < len(cm.Channels); i++ {
+				if Channel(i) != m.Channel {
+					cm.Channels[i].Output <- m
+				}
+			}
+			// add signal channel ? for errors and timers ?
+		}
+	}
+}
+
+
+
+type SimpleEndpoint struct {
+	Input  chan *Message
+	Output chan *Message
+}
+
+func (sd *SimpleEndpoint) ProcessInput() (*Message, error) {
+	m := <-sd.Input
+	return m, nil
+}
+
+func (sd *SimpleEndpoint) ProcessOutput(m *Message) error {
+	sd.Output <- m
+	return nil
+}
+
+func (sd *SimpleEndpoint) Send(m *Message) {
+	sd.Input <- m
+}
+
+func (sd *SimpleEndpoint) Recv() *Message {
+	m := <-sd.Output
+	return m
+}
+
+type LogEndpoint struct {
+}
+
+func (ld *LogEndpoint) ProcessInput() (*Message, error) {
+	return m, nil
+}
+
+func (ld *LogEndpoint) ProcessOutput(m *Message) error {
+    Log(DEBUG,"Message chan:%i id:%x len:%i data:%s",m.Channel, m.Id, len(m.Data), "<...>")
+	return nil
+}
+
+
