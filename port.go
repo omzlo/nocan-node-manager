@@ -1,5 +1,9 @@
 package nocan
 
+import (
+    "pannetrat.com/nocan/log"
+)
+
 type Port int
 
 type PortEndpoint interface {
@@ -35,29 +39,29 @@ func (pm *PortModel) Add(e PortEndpoint) Port {
 func (pm *PortModel) Send(port Port, m *Message) {
 	m.Port = port
 	pm.Input <- m
-	Log(DEBUG, "Added message to chan %v tagged with port %d", pm.Input, port)
+	log.Log(log.DEBUG, "Added message to chan %v tagged with port %d", pm.Input, port)
 }
 
 func (pm *PortModel) Recv(port Port) *Message {
 	m := <-pm.Ports[port].Output
-	Log(DEBUG, "Got message from chan %v tagged with port %d", pm.Ports[port].Output, m.Port)
+	log.Log(log.DEBUG, "Got message from chan %v tagged with port %d", pm.Ports[port].Output, m.Port)
 	return m
 }
 
 func (pm *PortModel) ListenAndServe() {
-	Log(DEBUG, "There are %d running ports", len(pm.Ports))
+	log.Log(log.DEBUG, "There are %d running ports", len(pm.Ports))
 	for cindex, cstate := range pm.Ports {
 		go cstate.Endpoint.ProcessRecv(pm, Port(cindex))
 		go cstate.Endpoint.ProcessSend(pm, Port(cindex))
-		Log(DEBUG, "Port %d: Input chan=%v Output= chan%v", cindex, pm.Input, cstate.Output)
+		log.Log(log.DEBUG, "Port %d: Input chan=%v Output= chan%v", cindex, pm.Input, cstate.Output)
 	}
 	for {
 		select {
 		case m := <-pm.Input:
-			Log(DEBUG, "Got a message on chan %v tagged with port %d.", pm.Input, int(m.Port))
+			log.Log(log.DEBUG, "Got a message on chan %v tagged with port %d.", pm.Input, int(m.Port))
 			for cindex, cstate := range pm.Ports {
 				if Port(cindex) != m.Port {
-					Log(DEBUG, "Dispatching to channel %v.", cstate.Output)
+					log.Log(log.DEBUG, "Dispatching to channel %v.", cstate.Output)
 					cstate.Output <- m
 				}
 			}
@@ -76,6 +80,6 @@ func (ld *LogEndpoint) ProcessSend(pm *PortModel, p Port) {
 func (ld *LogEndpoint) ProcessRecv(pm *PortModel, p Port) {
 	for {
 		m := pm.Recv(p)
-		Log(DEBUG, "Message %s", m.String())
+		log.Log(log.DEBUG, "Message %s", m.String())
 	}
 }

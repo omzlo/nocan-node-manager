@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
-	//"io/ioutil"
 	"github.com/julienschmidt/httprouter"
+	"io/ioutil"
 	"net/http"
 	"pannetrat.com/nocan"
+	"pannetrat.com/nocan/intelhex"
+	"pannetrat.com/nocan/log"
 	"strings"
 )
 
@@ -62,7 +64,7 @@ type CheckRouter struct {
 }
 
 func (cr *CheckRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	nocan.Log(nocan.DEBUG, "%s request from %s to %s", r.Method, r.RemoteAddr, r.RequestURI)
+	log.Log(log.DEBUG, "%s request from %s to %s", r.Method, r.RemoteAddr, r.RequestURI)
 	if len(r.URL.Path) > 1 {
 		r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
 	}
@@ -71,14 +73,22 @@ func (cr *CheckRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	fmt.Println("Start")
-    
-    core := nocan.NewCoreEndpoint()
+
+	data, _ := ioutil.ReadFile("test.hex")
+
+	ih := intelhex.New()
+	err := ih.Load(strings.NewReader(string(data)))
+	if err != nil {
+		log.Log(log.ERROR, err.Error())
+	}
+
+	core := nocan.NewCoreEndpoint()
 	core.Topics.Model.Register("foo")
 	core.Topics.Model.Register("pizza")
 
-    ports := nocan.NewPortModel()
-    ports.Add(&nocan.LogEndpoint{})
-    ports.Add(core)
+	ports := nocan.NewPortModel()
+	ports.Add(&nocan.LogEndpoint{})
+	ports.Add(core)
 
 	router := httprouter.New()
 	router.GET("/topic", core.Topics.Index)
@@ -87,7 +97,7 @@ func main() {
 	//http.Handle("/api/topic/", &TopicHandler{Topics: tm})
 	//http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("/Users/apannetrat/go/src/pannetrat.com/nocan/static/"))))
 	//http.HandleFunc("/", defaultHandler)
-    go ports.ListenAndServe()
+	go ports.ListenAndServe()
 	http.ListenAndServe(":8888", &CheckRouter{router})
 	fmt.Println("Done")
 }

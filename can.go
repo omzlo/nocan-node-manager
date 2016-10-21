@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	// "errors"
+    "pannetrat.com/nocan/log"
 )
 
 type CanId uint32
@@ -193,7 +194,7 @@ func (cd *CanDriver) ProcessInput() (*Message, error) {
 	node := frame.CanId.GetNode()
 	switch {
 	case !frame.CanId.IsExtended(), frame.CanId.IsRemote():
-		Log(WARNING, "Got malformed frame, discarding.")
+		log.Log(log.WARNING, "Got malformed frame, discarding.")
 		return nil, nil
 	case frame.CanId.IsControl():
 
@@ -202,13 +203,13 @@ func (cd *CanDriver) ProcessInput() (*Message, error) {
 	default:
 		if frame.CanId.IsFirst() {
 			if cd.InputBuffer[node] != nil {
-				Log(WARNING, "Got frame with inconsistent first bit indicator, discarding.")
+				log.Log(log.WARNING, "Got frame with inconsistent first bit indicator, discarding.")
 				return nil, nil
 			}
 			cd.InputBuffer[node] = NewMessageFromFrame(&frame)
 		} else {
 			if cd.InputBuffer[node] == nil {
-				Log(WARNING, "Got first frame with missing first bit indicator, discarding.")
+				log.Log(log.WARNING, "Got first frame with missing first bit indicator, discarding.")
 				return nil, nil
 			}
 			cd.InputBuffer[node].AppendData(frame.CanData[:frame.CanDlc])
