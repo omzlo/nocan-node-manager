@@ -44,12 +44,12 @@ func (tc *TopicController) Show(w http.ResponseWriter, r *http.Request, params h
 }
 
 func (tc *TopicController) Update(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
-    topicName := TrimLeftSlash(params.ByName("topic"))
+	topicName := TrimLeftSlash(params.ByName("topic"))
 
-    topic := tc.Model.FindByName(topicName)
-	
-    if topic < 0 {
-		http.Error(w, "Topic " + topicName + " does not exist", http.StatusNotFound)
+	topic := tc.Model.FindByName(topicName)
+
+	if topic < 0 {
+		http.Error(w, "Topic "+topicName+" does not exist", http.StatusNotFound)
 		return
 	}
 	body, _ := ioutil.ReadAll(r.Body)

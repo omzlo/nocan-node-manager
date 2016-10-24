@@ -3,6 +3,7 @@ package nocan
 import (
 	//"pannetrat.com/nocan/serial_can"
 	"pannetrat.com/nocan/clog"
+	"time"
 )
 
 const (
@@ -37,6 +38,7 @@ type SerialEndpoint struct {
 		SenseLevel   float32
 		UsbReference float32
 	}
+	RescueMode bool
 }
 
 func NewSerialEndpoint(device string) *SerialEndpoint {
@@ -58,6 +60,30 @@ func (se *SerialEndpoint) Close() {
 	se.Serial.Close()
 }
 
+func (se *SerialEndpoint) Rescue() bool {
+	se.Close()
+	for {
+		serial, err := SerialCanOpen(se.Device)
+		if err == nil {
+			se.Serial = serial
+			clog.Info("Reopened device %s", se.Device)
+			se.SendReset()
+			return true
+		} else {
+			clog.Warning("Failed to reopen device %s: %s", se.Device, err.Error())
+		}
+		time.Sleep(10 * time.Second)
+	}
+}
+
+func (se *SerialEndpoint) GetType() string {
+	return "serial-can-bus"
+}
+
+func (se *SerialEndpoint) GetAttributes() interface{} {
+	return &se.PowerStatus
+}
+
 func (se *SerialEndpoint) ProcessSend(pm *PortModel, p Port) {
 	for {
 		var frame CanFrame
@@ -65,7 +91,11 @@ func (se *SerialEndpoint) ProcessSend(pm *PortModel, p Port) {
 		clog.Debug("Waiting for serial input")
 		if se.Serial.Recv(&frame) == false {
 			clog.Error("Failed to receive frame from %s", se.Device)
-			return
+			if se.Rescue() {
+				continue
+			} else {
+				break
+			}
 		}
 		clog.Debug("Got serial input")
 
@@ -93,7 +123,7 @@ func (se *SerialEndpoint) ProcessSend(pm *PortModel, p Port) {
 					se.PowerStatus.SenseOn = frame.CanData[3] != 0
 					se.PowerStatus.SenseLevel = 100 * float32(senselevel) / 1023
 					se.PowerStatus.UsbReference = 1023 * 1.1 / float32(usbref)
-					clog.Info("Power stat estimates: power=%t power_level=%.1fV sense=%t sense_level=%.1f%% usb_power=%.1fV",
+					clog.Info("Power stat estimates: power=%t power_level=%.1fV sense=%t sense_level=%.3f%% usb_power=%.1fV",
 						se.PowerStatus.PowerOn, se.PowerStatus.PowerLevel,
 						se.PowerStatus.SenseOn, se.PowerStatus.SenseLevel,
 						se.PowerStatus.UsbReference)
@@ -118,7 +148,7 @@ func (se *SerialEndpoint) ProcessSend(pm *PortModel, p Port) {
 				se.InputBuffer[node].AppendData(frame.CanData[:frame.CanDlc])
 			}
 			if frame.CanId.IsLast() {
-				pm.Send(p, se.InputBuffer[node])
+				pm.SendMessage(p, se.InputBuffer[node])
 				se.InputBuffer[node] = nil
 			}
 		}
@@ -129,28 +159,36 @@ func (se *SerialEndpoint) ProcessRecv(pm *PortModel, p Port) {
 	for {
 		var frame CanFrame
 
-		m := pm.Recv(p)
-		pos := 0
-		for {
-			frame.CanId = (m.Id & CANID_MASK_MESSAGE)
-			if pos == 0 {
-				frame.CanId |= CANID_MASK_FIRST
+		m, s := pm.Recv(p)
+
+		if m != nil {
+			pos := 0
+			for {
+				frame.CanId = (m.Id & CANID_MASK_MESSAGE)
+				if pos == 0 {
+					frame.CanId |= CANID_MASK_FIRST
+				}
+				if len(m.Data)-pos <= 8 {
+					frame.CanId |= CANID_MASK_LAST
+					frame.CanDlc = uint8(len(m.Data) - pos)
+				} else {
+					frame.CanDlc = 8
+				}
+				copy(frame.CanData[:], m.Data[pos:pos+int(frame.CanDlc)])
+				if se.Serial.Send(&frame) == false {
+					clog.Error("Failed to send frame to %s", se.Device)
+					return
+				}
+				pos += int(frame.CanDlc)
+				if pos >= len(m.Data) {
+					break
+				}
 			}
-			if len(m.Data)-pos <= 8 {
-				frame.CanId |= CANID_MASK_LAST
-				frame.CanDlc = uint8(len(m.Data) - pos)
-			} else {
-				frame.CanDlc = 8
+		} else {
+			if s.Value == SIGNAL_HEARTBEAT {
+				se.SendGetPowerStatus()
 			}
-			copy(frame.CanData[:], m.Data[pos:pos+int(frame.CanDlc)])
-			if se.Serial.Send(&frame) == false {
-				clog.Error("Failed to send frame to %s", se.Device)
-				return
-			}
-			pos += int(frame.CanDlc)
-			if pos >= len(m.Data) {
-				break
-			}
+			// ignore other signals
 		}
 	}
 }

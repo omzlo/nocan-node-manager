@@ -18,7 +18,7 @@ int serial_can_open(const char *devname)
 
     fd = open(devname, O_RDWR | O_NOCTTY ); 
     if (fd <0) {
-        fprintf(stderr, "Could not open %s: %s", devname, strerror(errno)); 
+        fprintf(stderr, "Could not open %s: %s\n", devname, strerror(errno)); 
         return -1; 
     }
 
@@ -43,7 +43,7 @@ int serial_can_open(const char *devname)
 
     tcflush(fd, TCIOFLUSH);
     if (tcsetattr(fd,TCSANOW,&newtio)<0) {
-        fprintf(stderr, "Could not set attributes on %s: %s", devname, strerror(errno)); 
+        fprintf(stderr, "Could not set attributes on %s: %s\n", devname, strerror(errno)); 
         close(fd);
         return -1;
     }
