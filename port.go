@@ -1,8 +1,13 @@
 package nocan
 
 import (
-    "pannetrat.com/nocan/log"
+	"pannetrat.com/nocan/clog"
 )
+
+type Signal struct {
+	Port
+	Value uint
+}
 
 type Port int
 
@@ -12,8 +17,9 @@ type PortEndpoint interface {
 }
 
 type PortState struct {
-	Endpoint PortEndpoint
-	Output   chan *Message
+	Endpoint      PortEndpoint
+	Output        chan *Message
+	OutputSignals chan Signal
 }
 
 func NewPortState(e PortEndpoint) *PortState {
@@ -22,12 +28,13 @@ func NewPortState(e PortEndpoint) *PortState {
 
 type PortModel struct {
 	//LastPort Port
-	Input chan *Message
-	Ports []*PortState
+	Input        chan *Message
+	InputSignals chan Signal
+	Ports        []*PortState
 }
 
 func NewPortModel() *PortModel {
-	return &PortModel{Input: make(chan *Message, 4), Ports: make([]*PortState, 0, 16)}
+	return &PortModel{Signals: make(chan Signal), Input: make(chan *Message, 4), Ports: make([]*PortState, 0, 16)}
 }
 
 func (pm *PortModel) Add(e PortEndpoint) Port {
@@ -39,32 +46,44 @@ func (pm *PortModel) Add(e PortEndpoint) Port {
 func (pm *PortModel) Send(port Port, m *Message) {
 	m.Port = port
 	pm.Input <- m
-	log.Log(log.DEBUG, "Added message to chan %v tagged with port %d", pm.Input, port)
+	clog.Debug("Added message to chan %v tagged with port %d", pm.Input, port)
 }
 
-func (pm *PortModel) Recv(port Port) *Message {
-	m := <-pm.Ports[port].Output
-	log.Log(log.DEBUG, "Got message from chan %v tagged with port %d", pm.Ports[port].Output, m.Port)
-	return m
+func (pm *PortModel) SendSignal(port Port, signal uint) {
+	pm.InputSignal <- Signal{port, signal}
+	clog.Debug("Raised signal %08x on port %d", signal, port)
+}
+
+func (pm *PortModel) Recv(port Port) (*Message, Signal) {
+	select {
+	case m := <-pm.Ports[port].Output:
+		clog.Debug("Got message from chan %v (port %d) tagged with port %d", pm.Ports[port].Output, port, m.Port)
+		return m, 0
+	case s := <-pm.Ports[port].Signals:
+		clog.Debuf("Got signal on port %d with value 0x%8x", port, s)
+		return nil, s
+	}
 }
 
 func (pm *PortModel) ListenAndServe() {
-	log.Log(log.DEBUG, "There are %d running ports", len(pm.Ports))
+	clog.Debug("There are %d running ports", len(pm.Ports))
 	for cindex, cstate := range pm.Ports {
 		go cstate.Endpoint.ProcessRecv(pm, Port(cindex))
 		go cstate.Endpoint.ProcessSend(pm, Port(cindex))
-		log.Log(log.DEBUG, "Port %d: Input chan=%v Output= chan%v", cindex, pm.Input, cstate.Output)
+		clog.Debug("Port %d: Input chan=%v Output= chan%v", cindex, pm.Input, cstate.Output)
 	}
 	for {
 		select {
 		case m := <-pm.Input:
-			log.Log(log.DEBUG, "Got a message on chan %v tagged with port %d.", pm.Input, int(m.Port))
+			clog.Debug("Got a message on chan %v tagged with port %d.", pm.Input, int(m.Port))
 			for cindex, cstate := range pm.Ports {
 				if Port(cindex) != m.Port {
-					log.Log(log.DEBUG, "Dispatching to channel %v.", cstate.Output)
+					clog.Debug("Dispatching to channel %v.", cstate.Output)
 					cstate.Output <- m
 				}
 			}
+		case s := <-pm.InputSignal:
+			clog.Debugf
 			// add signal port ? for errors and timers ?
 		}
 	}
@@ -80,6 +99,6 @@ func (ld *LogEndpoint) ProcessSend(pm *PortModel, p Port) {
 func (ld *LogEndpoint) ProcessRecv(pm *PortModel, p Port) {
 	for {
 		m := pm.Recv(p)
-		log.Log(log.DEBUG, "Message %s", m.String())
+		clog.Debug("Message %s", m.String())
 	}
 }

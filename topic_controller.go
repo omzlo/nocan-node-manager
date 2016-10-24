@@ -1,7 +1,6 @@
 package nocan
 
 import (
-	"encoding/json"
 	"github.com/julienschmidt/httprouter"
 	"io/ioutil"
 	"net/http"
@@ -11,19 +10,6 @@ import (
 type TopicController struct {
 	Model    *TopicModel
 	Endpoint *CoreEndpoint
-}
-
-func RenderJSON(w http.ResponseWriter, v interface{}) bool {
-	js, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return false
-	}
-	if _, err := w.Write(js); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return false
-	}
-	return true
 }
 
 func NewTopicController(endpoint *CoreEndpoint) *TopicController {
