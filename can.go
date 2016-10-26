@@ -16,6 +16,14 @@ type CanFrame struct {
 	CanData [8]uint8
 }
 
+func (frame *CanFrame) String() string {
+	s := fmt.Sprintf("[%s %d:", frame.CanId.String(), frame.CanDlc)
+	for i := uint8(0); i < frame.CanDlc; i++ {
+		s += fmt.Sprintf(" %02x", frame.CanData[i])
+	}
+	return s + "]"
+}
+
 const (
 	CANID_MASK_EXTENDED = (1 << 31)
 	CANID_MASK_REMOTE   = (1 << 30)
@@ -23,7 +31,7 @@ const (
 	CANID_MASK_CONTROL  = (CANID_MASK_EXTENDED | CANID_MASK_REMOTE | CANID_MASK_ERROR)
 	CANID_MASK_FIRST    = (1 << 28)
 	CANID_MASK_LAST     = (1 << 20)
-	CANID_MASK_SYSTEM   = (1 << 19)
+	CANID_MASK_SYSTEM   = (1 << 18)
 	CANID_MASK_MESSAGE  = ^(CanId((1 << 28) | (1 << 20)))
 )
 

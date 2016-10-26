@@ -23,9 +23,9 @@ func (ld *LogEndpoint) ProcessRecv(pm *PortModel, p Port) {
 	for {
 		m, s := pm.Recv(p)
 		if m != nil {
-			clog.Debug("LOG PORT: Message %s", m.String())
+			clog.Info("LOG PORT: Message %s", m.String())
 		} else {
-			clog.Debug("LOG PORT: Signal 0x%08x", s.Value)
+			clog.Info("LOG PORT: Signal 0x%08x", s.Value)
 		}
 	}
 }

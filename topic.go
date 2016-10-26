@@ -27,19 +27,23 @@ func NewTopicModel() *TopicModel {
 	return tm
 }
 
-func (tm *TopicModel) Each(fn func (Topic, *TopicState, interface{}), data interface{}) {
+func (tm *TopicModel) Each(fn func(Topic, *TopicState, interface{}), data interface{}) {
 	tm.Mutex.Lock()
 	defer tm.Mutex.Unlock()
 
-    for i := 0; i<64; i++ {
-        if tm.States[i] != nil {
-            fn(Topic(i),tm.States[i],data)
-        }
-    }
+	for i := 0; i < 64; i++ {
+		if tm.States[i] != nil {
+			fn(Topic(i), tm.States[i], data)
+		}
+	}
 }
 
 func (tm *TopicModel) Register(topicName string) (Topic, error) {
 	var i Topic
+
+	if len(topicName) == 0 {
+		return Topic(-1), errors.New("Topic cannot be empty")
+	}
 
 	tm.Mutex.Lock()
 	defer tm.Mutex.Unlock()
@@ -68,6 +72,19 @@ func (tm *TopicModel) Unregister(topic Topic) bool {
 	delete(tm.Names, ts.Name)
 	ts.Name = ""
 	return true
+}
+
+func (tm *TopicModel) Lookup(topicName string, bitmap []byte) bool {
+	tm.Mutex.Lock()
+	defer tm.Mutex.Unlock()
+
+	// TODO: extend with '+',attributes, etc.
+	Bitmap64Fill(bitmap, 0)
+	if i, ok := tm.Names[topicName]; ok {
+		Bitmap64Set(bitmap, uint(i))
+		return true
+	}
+	return false
 }
 
 func (tm *TopicModel) FindByName(topicName string) Topic {

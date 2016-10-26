@@ -10,8 +10,9 @@ import (
 type Node int8
 
 type NodeState struct {
-	Uid       [8]byte
-	LastSeen time.Time
+	Uid           [8]byte
+	LastSeen      time.Time
+	Subscriptions [8]byte
 }
 
 func UidToString(id []byte) string {
@@ -27,11 +28,11 @@ func UidToString(id []byte) string {
 }
 
 func StringToUid(s string, id []byte) error {
-    src := []byte(s)
+	src := []byte(s)
 
-    if len(id)<8 {
-        return errors.New("Insufficient space to store node uid")
-    }
+	if len(id) < 8 {
+		return errors.New("Insufficient space to store node uid")
+	}
 
 	for i := 0; i < len(s); i += 3 {
 		if _, err := hex.Decode(id[i/3:i/3+1], src[i:i+2]); err != nil {
@@ -47,25 +48,51 @@ func StringToUid(s string, id []byte) error {
 type NodeModel struct {
 	Mutex  sync.Mutex
 	States [128]*NodeState
-	Uids    map[[8]byte]Node
+	Uids   map[[8]byte]Node
 }
 
 func NewNodeModel() *NodeModel {
 	return &NodeModel{Uids: make(map[[8]byte]Node)}
 }
 
-func (nm *NodeModel) Register(node [8]byte) (Node, error) {
+func (nm *NodeModel) Lookup(node []byte) (Node, bool) {
+	var udid [8]byte
+
+	if len(node) != 8 {
+		return Node(-1), false
+	}
+
+	copy(udid[:], node)
+
 	nm.Mutex.Lock()
 	defer nm.Mutex.Unlock()
 
-	if n, ok := nm.Uids[node]; ok {
+	if node, ok := nm.Uids[udid]; ok {
+		return node, true
+	}
+	return Node(-1), false
+}
+
+func (nm *NodeModel) Register(node []byte) (Node, error) {
+	var udid [8]byte
+
+	if len(node) != 8 {
+		return Node(-1), errors.New("Node identifier must be 8 bytes long")
+	}
+
+	copy(udid[:], node)
+
+	nm.Mutex.Lock()
+	defer nm.Mutex.Unlock()
+
+	if n, ok := nm.Uids[udid]; ok {
 		return n, nil
 	}
 
 	for i := 0; i < 128; i++ {
 		if nm.States[i] == nil {
-			nm.Uids[node] = Node(i)
-			nm.States[i] = &NodeState{Uid: node, LastSeen: time.Now()}
+			nm.Uids[udid] = Node(i)
+			nm.States[i] = &NodeState{Uid: udid, LastSeen: time.Now()}
 			return Node(i), nil
 		}
 	}
@@ -85,29 +112,60 @@ func (nm *NodeModel) Unregister(node Node) bool {
 	return true
 }
 
-func (nm *NodeModel) GetProperties(node Node) map[string]interface{} {
-    nm.Mutex.Lock()
+func (nm *NodeModel) Subscribe(node Node, bitmap []byte) bool {
+	if len(bitmap) != 8 {
+		return false
+	}
+
+	nm.Mutex.Lock()
 	defer nm.Mutex.Unlock()
 
 	if ns := nm.getState(node); ns != nil {
-        props := make(map[string]interface{})
+		Bitmap64Add(ns.Subscriptions[:], bitmap)
+		return true
+	}
+	return false
+}
 
-        props["id"] = UidToString(ns.Uid[:])
-        props["last_seen"] = ns.LastSeen.UTC().String()
-        props["attributes"] = make([]string,0)
+func (nm *NodeModel) Unsubscribe(node Node, bitmap []byte) bool {
+	if len(bitmap) != 8 {
+		return false
+	}
+
+	nm.Mutex.Lock()
+	defer nm.Mutex.Unlock()
+
+	if ns := nm.getState(node); ns != nil {
+		Bitmap64Sub(ns.Subscriptions[:], bitmap)
+		return true
+	}
+	return false
+}
+
+func (nm *NodeModel) GetProperties(node Node) map[string]interface{} {
+	nm.Mutex.Lock()
+	defer nm.Mutex.Unlock()
+
+	if ns := nm.getState(node); ns != nil {
+		props := make(map[string]interface{})
+
+		props["id"] = UidToString(ns.Uid[:])
+		props["last_seen"] = ns.LastSeen.UTC().String()
+		props["subscriptions"] = Bitmap64ToSlice(ns.Subscriptions[:])
+		props["attributes"] = make([]string, 0)
 		return props
 	}
-    return nil
+	return nil
 }
 
 func (nm *NodeModel) ByUid(uid [8]byte) (Node, bool) {
-    nm.Mutex.Lock()
+	nm.Mutex.Lock()
 	defer nm.Mutex.Unlock()
 
-    if n, ok := nm.Uids[uid]; ok {
-       return n, true
-    }
-    return Node(-1), false
+	if n, ok := nm.Uids[uid]; ok {
+		return n, true
+	}
+	return Node(-1), false
 }
 
 func (nm *NodeModel) Touch(node Node) {

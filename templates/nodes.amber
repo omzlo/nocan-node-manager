@@ -1,0 +1,8 @@
+extends _page
+
+block content
+    div.container
+        h1 Nodes
+        div#nodes
+
+    script $(display_nodes)

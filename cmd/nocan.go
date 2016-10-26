@@ -21,10 +21,17 @@ type CheckRouter struct {
 
 func (cr *CheckRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	clog.Debug("%s request from %s to %s", r.Method, r.RemoteAddr, r.RequestURI)
-	if len(r.URL.Path) > 1 {
+	if r.URL.Path != "/" && r.URL.Path != "/static/" {
 		r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
 	}
 	cr.handler.ServeHTTP(w, r)
+}
+
+type LogFileSystem struct{}
+
+func (lf *LogFileSystem) Open(name string) (http.File, error) {
+	clog.Debug("HTTP LOG: %s", name)
+	return nil, fmt.Errorf("Logged as %s", name)
 }
 
 func main() {
@@ -45,29 +52,32 @@ func main() {
 	}
 
 	core := nocan.NewCoreEndpoint()
-	core.Topics.Model.Register("foo")
+	core.Topics.Model.Register("/clock")
 	core.Topics.Model.Register("pizza")
 	nocan.StringToUid("01:02:03:04:05:06:07:88", id[:])
-	core.Nodes.Model.Register(id)
+	core.Nodes.Model.Register(id[:])
 
-	ports := nocan.NewPortModel()
-	ports.Add(&nocan.LogEndpoint{})
-	ports.Add(core)
+	core.Ports.Model.Add(&nocan.LogEndpoint{})
 	se := nocan.NewSerialEndpoint("/dev/cu.usbmodem12341")
 	if se != nil {
-		ports.Add(se)
+		core.Ports.Model.Add(se)
 	}
 
+	homepage := nocan.NewHomePageController()
+	nodepage := nocan.NewNodePageController()
+
 	router := httprouter.New()
-	router.GET("/topic", core.Topics.Index)
-	router.GET("/topic/*topic", core.Topics.Show)
-	router.PUT("/topic/*topic", core.Topics.Update)
-	router.GET("/nodes", core.Nodes.Index)
-	router.GET("/nodes/:node", core.Nodes.Show)
-	//http.Handle("/api/topic/", &TopicHandler{Topics: tm})
-	//http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("/Users/apannetrat/go/src/pannetrat.com/nocan/static/"))))
-	//http.HandleFunc("/", defaultHandler)
-	go ports.ListenAndServe()
+	router.GET("/api/topics", core.Topics.Index)
+	router.GET("/api/topics/*topic", core.Topics.Show)
+	router.PUT("/api/topics/*topic", core.Topics.Update)
+	router.GET("/api/nodes", core.Nodes.Index)
+	router.GET("/api/nodes/:node", core.Nodes.Show)
+	router.GET("/api/ports", core.Ports.Index)
+	router.ServeFiles("/static/*filepath", http.Dir("../static"))
+	router.GET("/nodes", nodepage.Index)
+	router.GET("/", homepage.Index)
+
+	core.ListenAndServe()
 	http.ListenAndServe(":8888", &CheckRouter{router})
 	fmt.Println("Done")
 }

@@ -1,0 +1,24 @@
+.widget {
+    margin-top: 1em;
+    margin-bottom: 1em;
+}
+
+.widget-item:first-child {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    background: #33C3F0;
+    color: #fff;
+}
+
+.widget-item:last-child {
+    border-bottom-right-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+.widget-item {
+    border: 1px solid #33C3F0;
+    display: block;
+    padding: 6px 8px;
+    margin: 0;
+    margin-bottom: -1px;
+}

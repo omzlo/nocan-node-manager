@@ -88,7 +88,7 @@ func (se *SerialEndpoint) ProcessSend(pm *PortModel, p Port) {
 	for {
 		var frame CanFrame
 
-		clog.Debug("Waiting for serial input")
+		//clog.Debug("Waiting for serial input")
 		if se.Serial.Recv(&frame) == false {
 			clog.Error("Failed to receive frame from %s", se.Device)
 			if se.Rescue() {
@@ -97,7 +97,7 @@ func (se *SerialEndpoint) ProcessSend(pm *PortModel, p Port) {
 				break
 			}
 		}
-		clog.Debug("Got serial input")
+		//clog.Debug("Got serial input")
 
 		node := frame.CanId.GetNode()
 
@@ -164,7 +164,7 @@ func (se *SerialEndpoint) ProcessRecv(pm *PortModel, p Port) {
 		if m != nil {
 			pos := 0
 			for {
-				frame.CanId = (m.Id & CANID_MASK_MESSAGE)
+				frame.CanId = (m.Id & CANID_MASK_MESSAGE) | CANID_MASK_EXTENDED
 				if pos == 0 {
 					frame.CanId |= CANID_MASK_FIRST
 				}
