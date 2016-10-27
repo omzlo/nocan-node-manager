@@ -7,6 +7,11 @@ import (
 type LogEndpoint struct {
 }
 
+func NewLogEndpoint(app *ApplicationController) *LogEndpoint {
+	endpoint := &LogEndpoint{}
+	return endpoint
+}
+
 func (ld *LogEndpoint) GetType() string {
 	return "log"
 }

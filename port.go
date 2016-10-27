@@ -102,7 +102,7 @@ func (pm *PortModel) ListenAndServe() {
 	for cindex, cstate := range pm.Ports {
 		go cstate.Endpoint.ProcessRecv(pm, Port(cindex))
 		go cstate.Endpoint.ProcessSend(pm, Port(cindex))
-		clog.Debug("Port %d: Output = chan%v", cindex, cstate.Outputs)
+		clog.Debug("Port %d: Output = chan%v, type=%s", cindex, cstate.Outputs, cstate.Endpoint.GetType())
 	}
 	/*
 		for {

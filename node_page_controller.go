@@ -14,6 +14,8 @@ func NewNodePageController() *NodePageController {
 	return &NodePageController{}
 }
 
+//func (nc *NodePageController) RenderNode()
+
 func (nc *NodePageController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	tpl, err := amber.CompileFile("../templates/nodes.amber", amber.Options{true, false})
 	if err != nil {
@@ -26,9 +28,11 @@ func (nc *NodePageController) Index(w http.ResponseWriter, r *http.Request, _ ht
 	}
 }
 
+/*
 func (nc *NodePageController) Show(w http.ResponseWriter, r *http.Request, p httprouter.Params) {
 	node := param.ByName("node")
 	if !ok {
 
 	}
 }
+*/

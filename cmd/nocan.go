@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"github.com/julienschmidt/httprouter"
 	"io/ioutil"
 	"net/http"
 	"pannetrat.com/nocan"
@@ -51,33 +50,30 @@ func main() {
 		clog.Error("%s", err.Error())
 	}
 
-	core := nocan.NewCoreEndpoint()
-	core.Topics.Model.Register("/clock")
-	core.Topics.Model.Register("pizza")
+	app := nocan.NewApplication()
+	app.Topics.Model.Register("/clock")
+	app.Topics.Model.Register("pizza")
 	nocan.StringToUid("01:02:03:04:05:06:07:88", id[:])
-	core.Nodes.Model.Register(id[:])
+	app.Nodes.Model.Register(id[:])
 
-	core.Ports.Model.Add(&nocan.LogEndpoint{})
 	se := nocan.NewSerialEndpoint("/dev/cu.usbmodem12341")
 	if se != nil {
-		core.Ports.Model.Add(se)
+		app.Ports.Model.Add(se)
 	}
 
 	homepage := nocan.NewHomePageController()
 	nodepage := nocan.NewNodePageController()
 
-	router := httprouter.New()
-	router.GET("/api/topics", core.Topics.Index)
-	router.GET("/api/topics/*topic", core.Topics.Show)
-	router.PUT("/api/topics/*topic", core.Topics.Update)
-	router.GET("/api/nodes", core.Nodes.Index)
-	router.GET("/api/nodes/:node", core.Nodes.Show)
-	router.GET("/api/ports", core.Ports.Index)
-	router.ServeFiles("/static/*filepath", http.Dir("../static"))
-	router.GET("/nodes", nodepage.Index)
-	router.GET("/", homepage.Index)
+	app.Router.GET("/api/topics", app.Topics.Index)
+	app.Router.GET("/api/topics/*topic", app.Topics.Show)
+	app.Router.PUT("/api/topics/*topic", app.Topics.Update)
+	app.Router.GET("/api/nodes", app.Nodes.Index)
+	app.Router.GET("/api/nodes/:node", app.Nodes.Show)
+	app.Router.GET("/api/ports", app.Ports.Index)
+	app.Router.ServeFiles("/static/*filepath", http.Dir("../static"))
+	app.Router.GET("/nodes", nodepage.Index)
+	app.Router.GET("/", homepage.Index)
 
-	core.ListenAndServe()
-	http.ListenAndServe(":8888", &CheckRouter{router})
+	app.Run()
 	fmt.Println("Done")
 }

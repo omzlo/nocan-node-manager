@@ -7,12 +7,12 @@ import (
 )
 
 type NodeController struct {
-	Model    *NodeModel
-	Endpoint *CoreEndpoint
+	Model       *NodeModel
+	Application *ApplicationController
 }
 
-func NewNodeController(endpoint *CoreEndpoint) *NodeController {
-	return &NodeController{NewNodeModel(), endpoint}
+func NewNodeController(app *ApplicationController) *NodeController {
+	return &NodeController{NewNodeModel(), app}
 }
 
 func (nc *NodeController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {

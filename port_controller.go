@@ -8,12 +8,12 @@ import (
 )
 
 type PortController struct {
-	Model    *PortModel
-	Endpoint *CoreEndpoint
+	Model       *PortModel
+	Application *ApplicationController
 }
 
-func NewPortController(endpoint *CoreEndpoint) *PortController {
-	return &PortController{NewPortModel(), endpoint}
+func NewPortController(app *ApplicationController) *PortController {
+	return &PortController{NewPortModel(), app}
 }
 
 func (pc *PortController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {

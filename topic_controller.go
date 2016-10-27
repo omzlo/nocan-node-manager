@@ -8,12 +8,12 @@ import (
 )
 
 type TopicController struct {
-	Model    *TopicModel
-	Endpoint *CoreEndpoint
+	Model       *TopicModel
+	Application *ApplicationController
 }
 
-func NewTopicController(endpoint *CoreEndpoint) *TopicController {
-	return &TopicController{NewTopicModel(), endpoint}
+func NewTopicController(app *ApplicationController) *TopicController {
+	return &TopicController{NewTopicModel(), app}
 }
 
 func (tc *TopicController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -54,5 +54,5 @@ func (tc *TopicController) Update(w http.ResponseWriter, r *http.Request, params
 	}
 	body, _ := ioutil.ReadAll(r.Body)
 	tc.Model.SetContent(topic, body)
-	tc.Endpoint.Publish(0, topic, body)
+	tc.Application.Publish(0, topic, body)
 }
