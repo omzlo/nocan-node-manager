@@ -1,11 +1,7 @@
-package nocan
+package model
 
 import (
 	"fmt"
-	//"io"
-	//"net"
-	// "errors"
-	//"pannetrat.com/nocan/clog"
 )
 
 type CanId uint32
@@ -21,6 +17,9 @@ func (frame *CanFrame) String() string {
 	for i := uint8(0); i < frame.CanDlc; i++ {
 		s += fmt.Sprintf(" %02x", frame.CanData[i])
 	}
+	if frame.IsSystem() {
+		s += " - " + NocanSysFuncString(frame.GetSysFunc())
+	}
 	return s + "]"
 }
 
@@ -34,35 +33,6 @@ const (
 	CANID_MASK_SYSTEM   = (1 << 18)
 	CANID_MASK_MESSAGE  = ^(CanId((1 << 28) | (1 << 20)))
 )
-
-/*
-func ReadCanFrame(r io.Reader, frame *CanFrame) error {
-	var buf [13]byte
-
-	if _, err := io.ReadFull(r, buf[:]); err != nil {
-		return err
-	}
-	frame.CanId = (CanId(buf[0]) << 24) | (CanId(buf[1]) << 16) | (CanId(buf[2]) << 8) | CanId(buf[3])
-	frame.CanDlc = buf[4]
-	copy(frame.CanData[:], buf[5:])
-	return nil
-}
-
-func WriteCanFrame(w io.Writer, frame *CanFrame) error {
-	var buf [13]byte
-
-	buf[0] = byte(frame.CanId >> 24)
-	buf[1] = byte(frame.CanId >> 16)
-	buf[2] = byte(frame.CanId >> 8)
-	buf[3] = byte(frame.CanId)
-	buf[4] = frame.CanDlc
-	copy(buf[5:], frame.CanData[:])
-
-	_, err := w.Write(buf[:])
-	// write must return non nil err if it does not write len(buf) bytes
-	return err
-}
-*/
 
 func (canid CanId) IsFirst() bool {
 	return (canid & CANID_MASK_FIRST) != 0
@@ -158,95 +128,40 @@ func (canid CanId) String() string {
 	return s + ">"
 }
 
-/*
-type CanDriver struct {
-	Conn         net.Conn
-	InputBuffer  [128]*Message
-	OutputBuffer Message
-	PowerStatus  struct {
-		PowerOn    bool
-		PowerLevel uint16
-		SenseOn    bool
-		SenseLevel uint16
+var sys_func_strings = [...]string{
+	"NOCAN_SYS_ANY",
+	"NOCAN_SYS_ADDRESS_REQUEST",
+	"NOCAN_SYS_ADDRESS_CONFIGURE",
+	"NOCAN_SYS_ADDRESS_CONFIGURE_ACK",
+	"NOCAN_SYS_ADDRESS_LOOKUP",
+	"NOCAN_SYS_ADDRESS_LOOKUP_ACK",
+	"NOCAN_SYS_NODE_BOOT_REQUEST",
+	"NOCAN_SYS_NODE_BOOT_ACK",
+	"NOCAN_SYS_NODE_PING",
+	"NOCAN_SYS_NODE_PING_ACK",
+	"NOCAN_SYS_TOPIC_REGISTER",
+	"NOCAN_SYS_TOPIC_REGISTER_ACK",
+	"NOCAN_SYS_TOPIC_UNREGISTER",
+	"NOCAN_SYS_TOPIC_UNREGISTER_ACK",
+	"NOCAN_SYS_TOPIC_SUBSCRIBE",
+	"NOCAN_SYS_TOPIC_UNSUBSCRIBE",
+	"NOCAN_SYS_TOPIC_LOOKUP",
+	"NOCAN_SYS_TOPIC_LOOKUP_ACK",
+	"NOCAN_SYS_BOOTLOADER_GET_SIGNATURE",
+	"NOCAN_SYS_BOOTLOADER_GET_SIGNATURE_ACK",
+	"NOCAN_SYS_BOOTLOADER_SET_ADDRESS",
+	"NOCAN_SYS_BOOTLOADER_SET_ADDRESS_ACK",
+	"NOCAN_SYS_BOOTLOADER_WRITE",
+	"NOCAN_SYS_BOOTLOADER_WRITE_ACK",
+	"NOCAN_SYS_BOOTLOADER_READ",
+	"NOCAN_SYS_BOOTLOADER_READ_ACK",
+	"NOCAN_SYS_BOOTLOADER_LEAVE",
+	"NOCAN_SYS_BOOTLOADER_LEAVE_ACK",
+}
+
+func NocanSysFuncString(fn uint8) string {
+	if fn >= uint8(len(sys_func_strings)) {
+		return "!ERR!"
 	}
+	return sys_func_strings[fn]
 }
-
-func (cd *CanDriver) ControlReset() bool {
-	// TODO:
-	return true
-}
-
-func (cd *CanDriver) ControlPower(on bool) bool {
-	// TODO:
-	return true
-}
-
-func (cd *CanDriver) ControlUpdatePowerStatus() bool {
-	// TODO:
-	return true
-}
-func (cd *CanDriver) ConstrolResistor(on bool) bool {
-	// TODO:
-	return true
-}
-
-func NewCanDriver(network, address string) (*CanDriver, error) {
-	conn, err := net.Dial(network, address)
-	if err != nil {
-		return nil, err
-	}
-	return &CanDriver{Conn: conn}, nil
-}
-
-func (cd *CanDriver) ProcessInput() (*Message, error) {
-	var frame CanFrame
-
-	if err := ReadCanFrame(cd.Conn, &frame); err != nil {
-		return nil, err
-	}
-
-	node := frame.CanId.GetNode()
-	switch {
-	case !frame.CanId.IsExtended(), frame.CanId.IsRemote():
-		clog.Warning( "Got malformed frame, discarding.")
-		return nil, nil
-	case frame.CanId.IsControl():
-
-	case frame.CanId.IsError():
-
-	default:
-		if frame.CanId.IsFirst() {
-			if cd.InputBuffer[node] != nil {
-				clog.Warning( "Got frame with inconsistent first bit indicator, discarding.")
-				return nil, nil
-			}
-			cd.InputBuffer[node] = NewMessageFromFrame(&frame)
-		} else {
-			if cd.InputBuffer[node] == nil {
-				clog.Warning( "Got first frame with missing first bit indicator, discarding.")
-				return nil, nil
-			}
-			cd.InputBuffer[node].AppendData(frame.CanData[:frame.CanDlc])
-		}
-		if frame.CanId.IsLast() {
-			retval := cd.InputBuffer[node]
-			cd.InputBuffer[node] = nil
-			return retval, nil
-		}
-	}
-	return nil, nil
-}
-
-func (cd *CanDriver) ProcessOutput(m *Message) error {
-	cd.OutputBuffer = *m
-    return nil
-}
-
-func (cd *CanDriver) Close() {
-    cd.Conn.Close()
-}
-
-type CanDriverModel struct {
-   // TODO
-}
-*/

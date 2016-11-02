@@ -1,4 +1,4 @@
-package nocan
+package serialcan
 
 /*
 #include "serial_can.h"
@@ -9,6 +9,7 @@ import "unsafe"
 import "fmt"
 
 import "pannetrat.com/nocan/clog"
+import "pannetrat.com/nocan/model"
 
 type SerialCan struct {
 	fd C.int
@@ -32,7 +33,7 @@ func (sc *SerialCan) Close() {
 	C.serial_can_close(sc.fd)
 }
 
-func (sc *SerialCan) Send(frame *CanFrame) bool {
+func (sc *SerialCan) Send(frame *model.CanFrame) bool {
 	var block [13]C.uchar
 
 	block[0] = C.uchar(frame.CanId >> 24)
@@ -52,14 +53,14 @@ func (sc *SerialCan) Send(frame *CanFrame) bool {
 	return false
 }
 
-func (sc *SerialCan) Recv(frame *CanFrame) bool {
+func (sc *SerialCan) Recv(frame *model.CanFrame) bool {
 	var data [13]C.uchar
 	if C.serial_can_recv(sc.fd, &data[0]) == 0 {
 		clog.Debug("FAILED Receiving serial frame %s", frame.String())
 		return false
 	}
 
-	frame.CanId = (CanId(data[0]) << 24) | (CanId(data[1]) << 16) | (CanId(data[2]) << 8) | CanId(data[3])
+	frame.CanId = (model.CanId(data[0]) << 24) | (model.CanId(data[1]) << 16) | (model.CanId(data[2]) << 8) | model.CanId(data[3])
 	frame.CanDlc = uint8(data[4])
 	for i := 0; i < 8; i++ {
 		frame.CanData[i] = uint8(data[5+i])

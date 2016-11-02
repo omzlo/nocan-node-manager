@@ -1,4 +1,4 @@
-package nocan
+package model
 
 type Signal struct {
 	Port

@@ -7,6 +7,7 @@ import (
 	"pannetrat.com/nocan"
 	"pannetrat.com/nocan/clog"
 	"pannetrat.com/nocan/intelhex"
+	"pannetrat.com/nocan/model"
 	"strings"
 )
 
@@ -53,7 +54,7 @@ func main() {
 	app := nocan.NewApplication()
 	app.Topics.Model.Register("/clock")
 	app.Topics.Model.Register("pizza")
-	nocan.StringToUid("01:02:03:04:05:06:07:88", id[:])
+	model.StringToUid("01:02:03:04:05:06:07:88", id[:])
 	app.Nodes.Model.Register(id[:])
 
 	se := nocan.NewSerialEndpoint("/dev/cu.usbmodem12341")

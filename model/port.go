@@ -1,4 +1,4 @@
-package nocan
+package model
 
 import (
 	"pannetrat.com/nocan/clog"

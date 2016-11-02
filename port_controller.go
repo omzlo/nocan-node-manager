@@ -2,24 +2,23 @@ package nocan
 
 import (
 	"github.com/julienschmidt/httprouter"
-	//"io/ioutil"
 	"net/http"
-	//		"strings"
+	"pannetrat.com/nocan/model"
 )
 
 type PortController struct {
-	Model       *PortModel
+	Model       *model.PortModel
 	Application *ApplicationController
 }
 
 func NewPortController(app *ApplicationController) *PortController {
-	return &PortController{NewPortModel(), app}
+	return &PortController{model.NewPortModel(), app}
 }
 
 func (pc *PortController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	var res []int
 
-	pc.Model.Each(func(port Port, _ *PortState, _ interface{}) {
+	pc.Model.Each(func(port model.Port, _ *model.PortState, _ interface{}) {
 		res = append(res, int(port))
 	}, nil)
 

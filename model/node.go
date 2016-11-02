@@ -1,8 +1,9 @@
-package nocan
+package model
 
 import (
 	"encoding/hex"
 	"errors"
+	"pannetrat.com/nocan/bitmap"
 	"sync"
 	"time"
 )
@@ -112,8 +113,8 @@ func (nm *NodeModel) Unregister(node Node) bool {
 	return true
 }
 
-func (nm *NodeModel) Subscribe(node Node, bitmap []byte) bool {
-	if len(bitmap) != 8 {
+func (nm *NodeModel) Subscribe(node Node, topic_bitmap []byte) bool {
+	if len(topic_bitmap) != 8 {
 		return false
 	}
 
@@ -121,14 +122,14 @@ func (nm *NodeModel) Subscribe(node Node, bitmap []byte) bool {
 	defer nm.Mutex.Unlock()
 
 	if ns := nm.getState(node); ns != nil {
-		Bitmap64Add(ns.Subscriptions[:], bitmap)
+		bitmap.Bitmap64Add(ns.Subscriptions[:], topic_bitmap)
 		return true
 	}
 	return false
 }
 
-func (nm *NodeModel) Unsubscribe(node Node, bitmap []byte) bool {
-	if len(bitmap) != 8 {
+func (nm *NodeModel) Unsubscribe(node Node, topic_bitmap []byte) bool {
+	if len(topic_bitmap) != 8 {
 		return false
 	}
 
@@ -136,7 +137,7 @@ func (nm *NodeModel) Unsubscribe(node Node, bitmap []byte) bool {
 	defer nm.Mutex.Unlock()
 
 	if ns := nm.getState(node); ns != nil {
-		Bitmap64Sub(ns.Subscriptions[:], bitmap)
+		bitmap.Bitmap64Sub(ns.Subscriptions[:], topic_bitmap)
 		return true
 	}
 	return false
@@ -151,7 +152,7 @@ func (nm *NodeModel) GetProperties(node Node) map[string]interface{} {
 
 		props["id"] = UidToString(ns.Uid[:])
 		props["last_seen"] = ns.LastSeen.UTC().String()
-		props["subscriptions"] = Bitmap64ToSlice(ns.Subscriptions[:])
+		props["subscriptions"] = bitmap.Bitmap64ToSlice(ns.Subscriptions[:])
 		props["attributes"] = make([]string, 0)
 		return props
 	}

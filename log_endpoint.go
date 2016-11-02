@@ -2,6 +2,7 @@ package nocan
 
 import (
 	"pannetrat.com/nocan/clog"
+	"pannetrat.com/nocan/model"
 )
 
 type LogEndpoint struct {
@@ -20,11 +21,11 @@ func (ld *LogEndpoint) GetAttributes() interface{} {
 	return nil
 }
 
-func (ld *LogEndpoint) ProcessSend(pm *PortModel, p Port) {
+func (ld *LogEndpoint) ProcessSend(pm *model.PortModel, p model.Port) {
 	return // nothing to do
 }
 
-func (ld *LogEndpoint) ProcessRecv(pm *PortModel, p Port) {
+func (ld *LogEndpoint) ProcessRecv(pm *model.PortModel, p model.Port) {
 	for {
 		m, s := pm.Recv(p)
 		if m != nil {

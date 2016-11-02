@@ -1,7 +1,8 @@
-package nocan
+package model
 
 import (
 	"errors"
+	"pannetrat.com/nocan/bitmap"
 	"sync"
 	"time"
 )
@@ -74,14 +75,14 @@ func (tm *TopicModel) Unregister(topic Topic) bool {
 	return true
 }
 
-func (tm *TopicModel) Lookup(topicName string, bitmap []byte) bool {
+func (tm *TopicModel) Lookup(topicName string, topic_bitmap []byte) bool {
 	tm.Mutex.Lock()
 	defer tm.Mutex.Unlock()
 
 	// TODO: extend with '+',attributes, etc.
-	Bitmap64Fill(bitmap, 0)
+	bitmap.Bitmap64Fill(topic_bitmap, 0)
 	if i, ok := tm.Names[topicName]; ok {
-		Bitmap64Set(bitmap, uint(i))
+		bitmap.Bitmap64Set(topic_bitmap, uint(i))
 		return true
 	}
 	return false

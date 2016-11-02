@@ -4,10 +4,11 @@ import (
 	"github.com/eknkc/amber"
 	"github.com/julienschmidt/httprouter"
 	"net/http"
+	"pannetrat.com/nocan/model"
 )
 
 type NodePageController struct {
-	Model *NodeModel
+	Model *model.NodeModel
 }
 
 func NewNodePageController() *NodePageController {

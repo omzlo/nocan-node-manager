@@ -1,4 +1,4 @@
-package nocan
+package bitmap
 
 func Bitmap64Fill(bitmap []byte, val byte) {
 	for i := 0; i < 8; i++ {

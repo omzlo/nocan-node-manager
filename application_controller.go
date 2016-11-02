@@ -4,11 +4,12 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"net/http"
 	"pannetrat.com/nocan/clog"
+	"pannetrat.com/nocan/model"
 	"strings"
 )
 
 type ApplicationController struct {
-	Port
+	Port   model.Port
 	Router *httprouter.Router
 	Ports  *PortController
 	Topics *TopicController
@@ -31,13 +32,13 @@ func (app *ApplicationController) Run() error {
 	return http.ListenAndServe(":8888", &CheckRouter{app.Router})
 }
 
-func (app *ApplicationController) SendMessage(m *Message) {
+func (app *ApplicationController) SendMessage(m *model.Message) {
 	app.Ports.Model.SendMessage(app.Port, m)
 }
 
-func (app *ApplicationController) Publish(node Node, topic Topic, data []byte) {
+func (app *ApplicationController) Publish(node model.Node, topic model.Topic, data []byte) {
 	//clog.Debug("Publish node=%d, topic=%d dlen=%d", int(node), int(topic), len(data))
-	m := NewPublishMessage(node, topic, data)
+	m := model.NewPublishMessage(node, topic, data)
 	clog.Debug("Publish %s", m.String())
 	app.SendMessage(m)
 }

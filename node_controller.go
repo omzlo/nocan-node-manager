@@ -3,33 +3,34 @@ package nocan
 import (
 	"github.com/julienschmidt/httprouter"
 	"net/http"
+	"pannetrat.com/nocan/model"
 	"strconv"
 )
 
 type NodeController struct {
-	Model       *NodeModel
+	Model       *model.NodeModel
 	Application *ApplicationController
 }
 
 func NewNodeController(app *ApplicationController) *NodeController {
-	return &NodeController{NewNodeModel(), app}
+	return &NodeController{model.NewNodeModel(), app}
 }
 
 func (nc *NodeController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	var res []string
 
-	nc.Model.Each(func(_ Node, state *NodeState, _ interface{}) {
-		res = append(res, UidToString(state.Uid[:]))
+	nc.Model.Each(func(_ model.Node, state *model.NodeState, _ interface{}) {
+		res = append(res, model.UidToString(state.Uid[:]))
 	}, nil)
 
 	RenderJSON(w, res)
 }
 
-func (nc *NodeController) GetNode(nodeName string) (Node, bool) {
+func (nc *NodeController) GetNode(nodeName string) (model.Node, bool) {
 	if len(nodeName) > 3 {
 		var uid [8]byte
-		if err := StringToUid(nodeName, uid[:]); err != nil {
-			return Node(-1), false
+		if err := model.StringToUid(nodeName, uid[:]); err != nil {
+			return model.Node(-1), false
 		}
 		return nc.Model.ByUid(uid)
 	}
@@ -37,10 +38,10 @@ func (nc *NodeController) GetNode(nodeName string) (Node, bool) {
 	node, err := strconv.Atoi(nodeName)
 
 	if err != nil {
-		return Node(-1), false
+		return model.Node(-1), false
 	}
 
-	return Node(node), true
+	return model.Node(node), true
 }
 
 func (nc *NodeController) Show(w http.ResponseWriter, r *http.Request, params httprouter.Params) {

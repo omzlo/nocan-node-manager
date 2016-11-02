@@ -4,22 +4,23 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"io/ioutil"
 	"net/http"
+	"pannetrat.com/nocan/model"
 	"strings"
 )
 
 type TopicController struct {
-	Model       *TopicModel
+	Model       *model.TopicModel
 	Application *ApplicationController
 }
 
 func NewTopicController(app *ApplicationController) *TopicController {
-	return &TopicController{NewTopicModel(), app}
+	return &TopicController{model.NewTopicModel(), app}
 }
 
 func (tc *TopicController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	var res []string
 
-	tc.Model.Each(func(topic Topic, state *TopicState, _ interface{}) {
+	tc.Model.Each(func(topic model.Topic, state *model.TopicState, _ interface{}) {
 		res = append(res, state.Name)
 	}, nil)
 

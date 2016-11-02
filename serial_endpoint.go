@@ -1,8 +1,9 @@
 package nocan
 
 import (
-	//"pannetrat.com/nocan/serial_can"
 	"pannetrat.com/nocan/clog"
+	"pannetrat.com/nocan/model"
+	"pannetrat.com/nocan/serialcan"
 	"time"
 )
 
@@ -26,10 +27,10 @@ const (
 )
 
 type SerialEndpoint struct {
-	Serial        *SerialCan
+	Serial        *serialcan.SerialCan
 	Device        string
-	InputBuffer   [128]*Message
-	OutputBuffer  Message
+	InputBuffer   [128]*model.Message
+	OutputBuffer  model.Message
 	RequestStatus [6]SerialCanRequest
 	PowerStatus   struct {
 		PowerOn      bool
@@ -42,7 +43,7 @@ type SerialEndpoint struct {
 }
 
 func NewSerialEndpoint(device string) *SerialEndpoint {
-	serial, err := SerialCanOpen(device)
+	serial, err := serialcan.SerialCanOpen(device)
 	if err != nil {
 		clog.Error("Could not open %s: %s", device, err.Error())
 		return nil
@@ -63,7 +64,7 @@ func (se *SerialEndpoint) Close() {
 func (se *SerialEndpoint) Rescue() bool {
 	se.Close()
 	for {
-		serial, err := SerialCanOpen(se.Device)
+		serial, err := serialcan.SerialCanOpen(se.Device)
 		if err == nil {
 			se.Serial = serial
 			clog.Info("Reopened device %s", se.Device)
@@ -84,9 +85,9 @@ func (se *SerialEndpoint) GetAttributes() interface{} {
 	return &se.PowerStatus
 }
 
-func (se *SerialEndpoint) ProcessSend(pm *PortModel, p Port) {
+func (se *SerialEndpoint) ProcessSend(pm *model.PortModel, p model.Port) {
 	for {
-		var frame CanFrame
+		var frame model.CanFrame
 
 		//clog.Debug("Waiting for serial input")
 		if se.Serial.Recv(&frame) == false {
@@ -139,7 +140,7 @@ func (se *SerialEndpoint) ProcessSend(pm *PortModel, p Port) {
 					clog.Warning("Got frame with inconsistent first bit indicator, discarding.")
 					return
 				}
-				se.InputBuffer[node] = NewMessageFromFrame(&frame)
+				se.InputBuffer[node] = model.NewMessageFromFrame(&frame)
 			} else {
 				if se.InputBuffer[node] == nil {
 					clog.Warning("Got first frame with missing first bit indicator, discarding.")
@@ -155,21 +156,21 @@ func (se *SerialEndpoint) ProcessSend(pm *PortModel, p Port) {
 	}
 }
 
-func (se *SerialEndpoint) ProcessRecv(pm *PortModel, p Port) {
+func (se *SerialEndpoint) ProcessRecv(pm *model.PortModel, p model.Port) {
 	for {
-		var frame CanFrame
+		var frame model.CanFrame
 
 		m, s := pm.Recv(p)
 
 		if m != nil {
 			pos := 0
 			for {
-				frame.CanId = (m.Id & CANID_MASK_MESSAGE) | CANID_MASK_EXTENDED
+				frame.CanId = (m.Id & model.CANID_MASK_MESSAGE) | model.CANID_MASK_EXTENDED
 				if pos == 0 {
-					frame.CanId |= CANID_MASK_FIRST
+					frame.CanId |= model.CANID_MASK_FIRST
 				}
 				if len(m.Data)-pos <= 8 {
-					frame.CanId |= CANID_MASK_LAST
+					frame.CanId |= model.CANID_MASK_LAST
 					frame.CanDlc = uint8(len(m.Data) - pos)
 				} else {
 					frame.CanDlc = 8
@@ -185,7 +186,7 @@ func (se *SerialEndpoint) ProcessRecv(pm *PortModel, p Port) {
 				}
 			}
 		} else {
-			if s.Value == SIGNAL_HEARTBEAT {
+			if s.Value == model.SIGNAL_HEARTBEAT {
 				se.SendGetPowerStatus()
 			}
 			// ignore other signals
@@ -196,7 +197,7 @@ func (se *SerialEndpoint) ProcessRecv(pm *PortModel, p Port) {
 /*
 func MakeControlMessage(fn uint8, param uint8, data []byte) *Message {
     m := &Message{}
-    m.Id = CanId(CANID_MASK_CONTROL).SetSysFunc(fn).SetSysParam(param)
+    m.Id = CanId(model.CANID_MASK_CONTROL).SetSysFunc(fn).SetSysParam(param)
     if data!=nil {
         m.Data = make([]byte,len(data))
         copy(m.Data[:],data)
@@ -207,9 +208,9 @@ func MakeControlMessage(fn uint8, param uint8, data []byte) *Message {
 }
 */
 
-func MakeControlFrame(fn uint8, param uint8, data []byte) *CanFrame {
-	frame := &CanFrame{}
-	frame.CanId = CanId(CANID_MASK_CONTROL).SetSysFunc(fn).SetSysParam(param)
+func MakeControlFrame(fn uint8, param uint8, data []byte) *model.CanFrame {
+	frame := &model.CanFrame{}
+	frame.CanId = model.CanId(model.CANID_MASK_CONTROL).SetSysFunc(fn).SetSysParam(param)
 	frame.CanDlc = uint8(len(data))
 	if data != nil {
 		copy(frame.CanData[:], data)
