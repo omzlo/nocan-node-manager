@@ -1,7 +1,7 @@
 package model
 
 type Signal struct {
-	Port
+	Task
 	Value uint
 }
 
@@ -9,6 +9,6 @@ const (
 	SIGNAL_HEARTBEAT = 1
 )
 
-func CreateSignal(port Port, value uint) Signal {
-	return Signal{port, value}
+func CreateSignal(task Task, value uint) Signal {
+	return Signal{task, value}
 }

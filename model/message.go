@@ -5,13 +5,13 @@ import (
 )
 
 type Message struct {
-	Port
+	Task
 	Id   CanId
 	Data []byte
 }
 
 func NewMessage(id CanId, data []byte) *Message {
-	m := &Message{Port: -1, Id: id, Data: make([]byte, 0, 64)}
+	m := &Message{Task: -1, Id: id, Data: make([]byte, 0, 64)}
 	m.Data = m.Data[:len(data)]
 	copy(m.Data, data)
 	return m
@@ -22,7 +22,7 @@ func NewMessageFromFrame(frame *CanFrame) *Message {
 }
 
 func (m *Message) String() string {
-	s := fmt.Sprintf("{port:%d, %s, [", int(m.Port), m.Id)
+	s := fmt.Sprintf("{task:%d, %s, [", int(m.Task), m.Id)
 	for i := 0; i < len(m.Data); i++ {
 		if i > 0 {
 			s += " "

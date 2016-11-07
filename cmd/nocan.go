@@ -51,30 +51,32 @@ func main() {
 		clog.Error("%s", err.Error())
 	}
 
-	app := nocan.NewApplication()
-	app.Topics.Model.Register("/clock")
-	app.Topics.Model.Register("pizza")
+	main := nocan.NewMainTask()
+	main.Topics.Model.Register("/clock")
+	main.Topics.Model.Register("pizza")
 	model.StringToUid("01:02:03:04:05:06:07:88", id[:])
-	app.Nodes.Model.Register(id[:])
+	main.Nodes.Model.Register(id[:])
 
-	se := nocan.NewSerialEndpoint("/dev/cu.usbmodem12341")
+	se := nocan.NewSerialTask("/dev/cu.usbmodem12341")
 	if se != nil {
-		app.Ports.Model.Add(se)
+		main.TaskManager.CreateTask("serial", se)
 	}
+	main.TaskManager.CreateTask("log", nocan.NewLogTask())
 
 	homepage := nocan.NewHomePageController()
 	nodepage := nocan.NewNodePageController()
 
-	app.Router.GET("/api/topics", app.Topics.Index)
-	app.Router.GET("/api/topics/*topic", app.Topics.Show)
-	app.Router.PUT("/api/topics/*topic", app.Topics.Update)
-	app.Router.GET("/api/nodes", app.Nodes.Index)
-	app.Router.GET("/api/nodes/:node", app.Nodes.Show)
-	app.Router.GET("/api/ports", app.Ports.Index)
-	app.Router.ServeFiles("/static/*filepath", http.Dir("../static"))
-	app.Router.GET("/nodes", nodepage.Index)
-	app.Router.GET("/", homepage.Index)
+	main.Router.GET("/api/topics", main.Topics.Index)
+	main.Router.GET("/api/topics/*topic", main.Topics.Show)
+	main.Router.PUT("/api/topics/*topic", main.Topics.Update)
+	main.Router.GET("/api/nodes", main.Nodes.Index)
+	main.Router.GET("/api/nodes/:node", main.Nodes.Show)
+	main.Router.GET("/api/nodes/:node/flash", main.Nodes.Flash.Show)
+	//main.Router.GET("/api/ports", main.Ports.Index)
+	main.Router.ServeFiles("/static/*filepath", http.Dir("../static"))
+	main.Router.GET("/nodes", nodepage.Index)
+	main.Router.GET("/", homepage.Index)
 
-	app.Run()
+	main.TaskManager.Run()
 	fmt.Println("Done")
 }
