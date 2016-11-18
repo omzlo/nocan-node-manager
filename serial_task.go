@@ -27,10 +27,12 @@ const (
 )
 
 type SerialTask struct {
+	BaseTask
 	Serial        *serialcan.SerialCan
 	Device        string
 	InputBuffer   [128]*model.Message
 	OutputBuffer  model.Message
+	Ticker        *time.Ticker
 	RequestStatus [6]SerialCanRequest
 	PowerStatus   struct {
 		PowerOn      bool
@@ -42,7 +44,7 @@ type SerialTask struct {
 	RescueMode bool
 }
 
-func NewSerialTask(device string) *SerialTask {
+func NewSerialTask(pm *model.PortManager, device string) *SerialTask {
 	serial, err := serialcan.SerialCanOpen(device)
 	if err != nil {
 		clog.Error("Could not open %s: %s", device, err.Error())
@@ -50,7 +52,7 @@ func NewSerialTask(device string) *SerialTask {
 	}
 	clog.Debug("Opened device %s", device)
 
-	se := &SerialTask{Serial: serial, Device: device}
+	se := &SerialTask{BaseTask: BaseTask{pm, pm.CreatePort("serial")}, Serial: serial, Device: device}
 
 	return se
 }
@@ -81,7 +83,7 @@ func (se *SerialTask) GetAttributes() interface{} {
 }
 */
 
-func (se *SerialTask) ProcessSend(task *model.TaskState) {
+func (se *SerialTask) ProcessSend(port *model.Port) {
 	for {
 		var frame model.CanFrame
 
@@ -134,31 +136,30 @@ func (se *SerialTask) ProcessSend(task *model.TaskState) {
 			if frame.CanId.IsFirst() {
 				if se.InputBuffer[node] != nil {
 					clog.Warning("Got frame with inconsistent first bit indicator, discarding.")
-					return
+					break
 				}
 				se.InputBuffer[node] = model.NewMessageFromFrame(&frame)
 			} else {
 				if se.InputBuffer[node] == nil {
 					clog.Warning("Got first frame with missing first bit indicator, discarding.")
-					return
+					break
 				}
 				se.InputBuffer[node].AppendData(frame.CanData[:frame.CanDlc])
 			}
 			if frame.CanId.IsLast() {
-				task.SendMessage(se.InputBuffer[node])
+				port.SendMessage(se.InputBuffer[node])
 				se.InputBuffer[node] = nil
 			}
 		}
 	}
 }
 
-func (se *SerialTask) ProcessRecv(task *model.TaskState) {
+func (se *SerialTask) ProcessRecv(port *model.Port) {
 	for {
 		var frame model.CanFrame
 
-		m, s := task.Recv()
-
-		if m != nil {
+		select {
+		case m := <-port.Input:
 			pos := 0
 			for {
 				frame.CanId = (m.Id & model.CANID_MASK_MESSAGE) | model.CANID_MASK_EXTENDED
@@ -181,39 +182,24 @@ func (se *SerialTask) ProcessRecv(task *model.TaskState) {
 					break
 				}
 			}
-		} else {
-			if s.Value == model.SIGNAL_HEARTBEAT {
-				se.SendGetPowerStatus()
-			}
-			// ignore other signals
+		case <-se.Ticker.C:
+			se.SendGetPowerStatus()
 		}
 	}
 }
 
-func (se *SerialTask) Setup(_ *model.TaskState) {
-
-}
-
-func (se *SerialTask) Run(task *model.TaskState) {
-	go se.ProcessRecv(task)
+func (se *SerialTask) Run() {
+	se.Ticker = time.NewTicker(10 * time.Second)
+	go se.ProcessRecv(se.Port)
 	se.SendReset()
+	go func() {
+		se.SendSetPower(false)
+		time.Sleep(3 * time.Second)
+		se.SendSetPower(true)
+	}()
 	se.SendGetPowerStatus()
-	se.ProcessSend(task)
+	se.ProcessSend(se.Port)
 }
-
-/*
-func MakeControlMessage(fn uint8, param uint8, data []byte) *Message {
-    m := &Message{}
-    m.Id = CanId(model.CANID_MASK_CONTROL).SetSysFunc(fn).SetSysParam(param)
-    if data!=nil {
-        m.Data = make([]byte,len(data))
-        copy(m.Data[:],data)
-    } else {
-        m.Data = make([]byte,0)
-    }
-    return m
-}
-*/
 
 func MakeControlFrame(fn uint8, param uint8, data []byte) *model.CanFrame {
 	frame := &model.CanFrame{}
@@ -234,5 +220,17 @@ func (se *SerialTask) SendReset() {
 func (se *SerialTask) SendGetPowerStatus() {
 	frame := MakeControlFrame(SERIAL_CAN_CTRL_GET_POWER_STATUS, 0, nil)
 	se.RequestStatus[SERIAL_CAN_CTRL_GET_POWER_STATUS].Status = SERIAL_CAN_REQUEST_STATUS_SUBMITTED
+	se.Serial.Send(frame)
+}
+
+func (se *SerialTask) SendSetPower(powerOn bool) {
+	var on_off uint8
+	if powerOn {
+		on_off = 1
+	} else {
+		on_off = 0
+	}
+	frame := MakeControlFrame(SERIAL_CAN_CTRL_SET_POWER, on_off, nil)
+	//se.RequestStatus[SERIAL_CAN_CTRL_GET_POWER_STATUS].Status = SERIAL_CAN_REQUEST_STATUS_SUBMITTED
 	se.Serial.Send(frame)
 }

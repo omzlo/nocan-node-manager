@@ -14,12 +14,28 @@ type IntelHexMemBlock struct {
 	Data    []byte
 }
 
+func (block *IntelHexMemBlock) Copy(dest []byte, offset uint32, maxlen uint32) uint32 {
+	if offset > uint32(len(block.Data)) {
+		return 0
+	}
+
+	var clen uint32
+	if offset+maxlen <= uint32(len(block.Data)) {
+		clen = maxlen
+	} else {
+		clen = uint32(len(block.Data)) - offset
+	}
+	copy(dest, block.Data[offset:offset+clen])
+	return clen
+}
+
 type IntelHex struct {
+	Size   uint
 	Blocks []*IntelHexMemBlock
 }
 
 func New() *IntelHex {
-	return &IntelHex{make([]*IntelHexMemBlock, 0, 8)}
+	return &IntelHex{Size: 0, Blocks: make([]*IntelHexMemBlock, 0, 8)}
 }
 
 func (ihex *IntelHex) Add(btype uint8, address uint32, data []byte) {
@@ -28,12 +44,14 @@ func (ihex *IntelHex) Add(btype uint8, address uint32, data []byte) {
 	for i, block := range ihex.Blocks {
 		if btype == block.Type && address == block.Address+uint32(len(block.Data)) {
 			ihex.Blocks[i].Data = append(block.Data, data...)
+			ihex.Size += uint(len(data))
 			return
 		}
 	}
 	block := &IntelHexMemBlock{btype, address, make([]byte, len(data))}
 	copy(block.Data, data)
 	ihex.Blocks = append(ihex.Blocks, block)
+	ihex.Size += uint(len(data))
 }
 
 func (ihex *IntelHex) Load(r io.Reader) error {
@@ -50,12 +68,13 @@ func (ihex *IntelHex) Load(r io.Reader) error {
 	for scanner.Scan() {
 		line_count++
 		line := scanner.Text()
+
 		if line[0] != ':' {
 			return fmt.Errorf("Missing ':' at the beginning of line %d", line_count)
 		}
 		data, err := hex.DecodeString(line[1:])
 		if err != nil {
-			return err
+			return fmt.Errorf("Failed to decode hex file data on line %d: %s", line_count, err.Error())
 		}
 		if len(data) < 5 || len(data) != (5+int(data[0])) {
 			return fmt.Errorf("Missing data in hexfile on line %d", line_count)
@@ -108,12 +127,47 @@ func (ihex *IntelHex) Load(r io.Reader) error {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return err
+		return fmt.Errorf("Failed to read next data after line %d: %s", line_count, err.Error())
 	}
 	return fmt.Errorf("Unexpected end of file on line %d", line_count)
 }
 
 func (hex *IntelHex) Save(w io.Writer) error {
+	var extended_address uint32 = 0
+	var checksum uint8
+
+	for _, block := range hex.Blocks {
+
+		if extended_address != (block.Address >> 16) {
+			extended_address = (block.Address >> 16)
+			checksum = ^(0x02 + 0x00 + 0x00 + 0x04 + uint8(extended_address>>8) + uint8(extended_address&0xFF)) + 1
+			fmt.Fprintf(w, ":02000004%02X%02X%02X\n", (extended_address >> 8), (extended_address & 0xFF), checksum)
+		}
+
+		var pos uint32 = 0
+		var length uint32 = uint32(len(block.Data))
+		for pos < length {
+			var blen uint8
+			var i uint32
+
+			address := block.Address + pos
+
+			if length-pos < 16 {
+				blen = uint8(length - pos)
+			} else {
+				blen = 16
+			}
+
+			checksum = blen + uint8((address>>8)&0xFF) + uint8((address)&0xFF) + 0x00
+			fmt.Fprintf(w, ":%02X%02X%02X00", blen, ((address >> 8) & 0xFF), ((address) & 0xFF))
+			for i = 0; i < uint32(blen); i++ {
+				fmt.Fprintf(w, "%02X", block.Data[pos+i])
+				checksum += block.Data[pos+i]
+			}
+			fmt.Fprintf(w, "%02X\n", ((^checksum)+1)&0xFF)
+			pos += uint32(blen)
+		}
+	}
 	return nil
 }
 

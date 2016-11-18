@@ -17,7 +17,7 @@ type TopicState struct {
 }
 
 type TopicModel struct {
-	Mutex  sync.Mutex
+	Mutex  sync.RWMutex
 	States [64]*TopicState
 	Names  map[string]Topic
 }
@@ -76,8 +76,8 @@ func (tm *TopicModel) Unregister(topic Topic) bool {
 }
 
 func (tm *TopicModel) Lookup(topicName string, topic_bitmap []byte) bool {
-	tm.Mutex.Lock()
-	defer tm.Mutex.Unlock()
+	tm.Mutex.RLock()
+	defer tm.Mutex.RUnlock()
 
 	// TODO: extend with '+',attributes, etc.
 	bitmap.Bitmap64Fill(topic_bitmap, 0)
@@ -89,8 +89,8 @@ func (tm *TopicModel) Lookup(topicName string, topic_bitmap []byte) bool {
 }
 
 func (tm *TopicModel) FindByName(topicName string) Topic {
-	tm.Mutex.Lock()
-	defer tm.Mutex.Unlock()
+	tm.Mutex.RLock()
+	defer tm.Mutex.RUnlock()
 
 	if i, ok := tm.Names[topicName]; ok {
 		return i
@@ -99,8 +99,8 @@ func (tm *TopicModel) FindByName(topicName string) Topic {
 }
 
 func (tm *TopicModel) GetContent(topic Topic) ([]byte, bool) {
-	tm.Mutex.Lock()
-	defer tm.Mutex.Unlock()
+	tm.Mutex.RLock()
+	defer tm.Mutex.RUnlock()
 
 	ts := tm.getState(topic)
 	if ts == nil {

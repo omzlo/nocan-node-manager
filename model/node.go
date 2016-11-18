@@ -47,7 +47,7 @@ func StringToUid(s string, id []byte) error {
 }
 
 type NodeModel struct {
-	Mutex  sync.Mutex
+	Mutex  sync.RWMutex
 	States [128]*NodeState
 	Uids   map[[8]byte]Node
 }
@@ -65,8 +65,8 @@ func (nm *NodeModel) Lookup(node []byte) (Node, bool) {
 
 	copy(udid[:], node)
 
-	nm.Mutex.Lock()
-	defer nm.Mutex.Unlock()
+	nm.Mutex.RLock()
+	defer nm.Mutex.RUnlock()
 
 	if node, ok := nm.Uids[udid]; ok {
 		return node, true
@@ -144,8 +144,8 @@ func (nm *NodeModel) Unsubscribe(node Node, topic_bitmap []byte) bool {
 }
 
 func (nm *NodeModel) GetProperties(node Node) map[string]interface{} {
-	nm.Mutex.Lock()
-	defer nm.Mutex.Unlock()
+	nm.Mutex.RLock()
+	defer nm.Mutex.RUnlock()
 
 	if ns := nm.getState(node); ns != nil {
 		props := make(map[string]interface{})
@@ -160,8 +160,8 @@ func (nm *NodeModel) GetProperties(node Node) map[string]interface{} {
 }
 
 func (nm *NodeModel) ByUid(uid [8]byte) (Node, bool) {
-	nm.Mutex.Lock()
-	defer nm.Mutex.Unlock()
+	nm.Mutex.RLock()
+	defer nm.Mutex.RUnlock()
 
 	if n, ok := nm.Uids[uid]; ok {
 		return n, true

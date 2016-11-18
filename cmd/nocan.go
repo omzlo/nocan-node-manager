@@ -11,29 +11,6 @@ import (
 	"strings"
 )
 
-func defaultHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Hi there, I hate %s!", r.URL.Path[1:])
-}
-
-type CheckRouter struct {
-	handler http.Handler
-}
-
-func (cr *CheckRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	clog.Debug("%s request from %s to %s", r.Method, r.RemoteAddr, r.RequestURI)
-	if r.URL.Path != "/" && r.URL.Path != "/static/" {
-		r.URL.Path = strings.TrimSuffix(r.URL.Path, "/")
-	}
-	cr.handler.ServeHTTP(w, r)
-}
-
-type LogFileSystem struct{}
-
-func (lf *LogFileSystem) Open(name string) (http.File, error) {
-	clog.Debug("HTTP LOG: %s", name)
-	return nil, fmt.Errorf("Logged as %s", name)
-}
-
 func main() {
 	var id [8]byte
 
@@ -51,17 +28,22 @@ func main() {
 		clog.Error("%s", err.Error())
 	}
 
-	main := nocan.NewMainTask()
+	portmanager := model.NewPortManager()
+
+	main := nocan.NewMainTask(portmanager)
 	main.Topics.Model.Register("/clock")
 	main.Topics.Model.Register("pizza")
 	model.StringToUid("01:02:03:04:05:06:07:88", id[:])
 	main.Nodes.Model.Register(id[:])
 
-	se := nocan.NewSerialTask("/dev/cu.usbmodem12341")
-	if se != nil {
-		main.TaskManager.CreateTask("serial", se)
+	st := nocan.NewSerialTask(portmanager, "/dev/cu.usbmodem12341")
+	if st != nil {
+		go st.Run()
 	}
-	main.TaskManager.CreateTask("log", nocan.NewLogTask())
+	lt := nocan.NewLogTask(portmanager)
+	if lt != nil {
+		go lt.Run()
+	}
 
 	homepage := nocan.NewHomePageController()
 	nodepage := nocan.NewNodePageController()
@@ -71,12 +53,15 @@ func main() {
 	main.Router.PUT("/api/topics/*topic", main.Topics.Update)
 	main.Router.GET("/api/nodes", main.Nodes.Index)
 	main.Router.GET("/api/nodes/:node", main.Nodes.Show)
-	main.Router.GET("/api/nodes/:node/flash", main.Nodes.Flash.Show)
+	main.Router.GET("/api/nodes/:node/flash", main.Nodes.Firmware.Show)
+	main.Router.PUT("/api/nodes/:node/flash", main.Nodes.Firmware.Update)
+	main.Router.GET("/api/nodes/:node/eeprom", main.Nodes.Firmware.Show)
+	main.Router.PUT("/api/nodes/:node/eeprom", main.Nodes.Firmware.Update)
 	//main.Router.GET("/api/ports", main.Ports.Index)
 	main.Router.ServeFiles("/static/*filepath", http.Dir("../static"))
 	main.Router.GET("/nodes", nodepage.Index)
 	main.Router.GET("/", homepage.Index)
 
-	main.TaskManager.Run()
+	main.Run()
 	fmt.Println("Done")
 }

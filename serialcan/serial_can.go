@@ -56,12 +56,16 @@ func (sc *SerialCan) Send(frame *model.CanFrame) bool {
 func (sc *SerialCan) Recv(frame *model.CanFrame) bool {
 	var data [13]C.uchar
 	if C.serial_can_recv(sc.fd, &data[0]) == 0 {
-		clog.Debug("FAILED Receiving serial frame %s", frame.String())
+		clog.Warning("FAILED Receiving serial frame from device")
 		return false
 	}
 
 	frame.CanId = (model.CanId(data[0]) << 24) | (model.CanId(data[1]) << 16) | (model.CanId(data[2]) << 8) | model.CanId(data[3])
 	frame.CanDlc = uint8(data[4])
+	if frame.CanDlc > 8 {
+		clog.Warning("Incorrect frame format: DLC=%d, %s", frame.CanDlc, frame.String())
+		return false
+	}
 	for i := 0; i < 8; i++ {
 		frame.CanData[i] = uint8(data[5+i])
 	}

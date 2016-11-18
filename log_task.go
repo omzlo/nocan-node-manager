@@ -6,23 +6,18 @@ import (
 )
 
 type LogTask struct {
+	Port *model.Port
 }
 
-func NewLogTask() *LogTask {
-	return &LogTask{}
+func NewLogTask(pm *model.PortManager) *LogTask {
+	task := &LogTask{}
+	task.Port = pm.CreatePort("log")
+	return task
 }
 
-func (lt *LogTask) Setup(_ *model.TaskState) {
-
-}
-
-func (lt *LogTask) Run(task *model.TaskState) {
+func (lt *LogTask) Run() {
 	for {
-		m, s := task.Recv()
-		if m != nil {
-			clog.Info("LOG PORT: Message %s", m.String())
-		} else {
-			clog.Info("LOG PORT: Signal 0x%08x", s.Value)
-		}
+		m := <-lt.Port.Input
+		clog.Info("LOG PORT: Message %s", m.String())
 	}
 }

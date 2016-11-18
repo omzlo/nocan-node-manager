@@ -13,8 +13,16 @@ type CanFrame struct {
 }
 
 func (frame *CanFrame) String() string {
-	s := fmt.Sprintf("[%s %d:", frame.CanId.String(), frame.CanDlc)
-	for i := uint8(0); i < frame.CanDlc; i++ {
+	dlc := frame.CanDlc
+
+	s := fmt.Sprintf("[%s ", frame.CanId.String())
+	if frame.CanDlc > 8 {
+		s += "!(dlc>8)"
+		dlc = 8
+	}
+	s += fmt.Sprintf("%d:", frame.CanDlc)
+
+	for i := uint8(0); i < dlc; i++ {
 		s += fmt.Sprintf(" %02x", frame.CanData[i])
 	}
 	if frame.IsSystem() {
