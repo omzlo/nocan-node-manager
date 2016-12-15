@@ -2,21 +2,47 @@ package model
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io/ioutil"
 	"pannetrat.com/nocan/bitmap"
+	"pannetrat.com/nocan/clog"
+	"strconv"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 type Node int8
 
+type NodeAttributes map[string]interface{}
+
 type NodeState struct {
-	Uid           [8]byte
-	LastSeen      time.Time
-	Subscriptions [8]byte
+	Active        bool           `json:"-"`
+	Id            Node           `json:"id"`
+	Udid          string         `json:"udid"`
+	LastSeen      time.Time      `json:"last_seen"`
+	Subscriptions [8]byte        `json:"-"`
+	Attributes    NodeAttributes `json:"attributes"`
 }
 
-func UidToString(id []byte) string {
+func (ns *NodeState) getStringAttribute(key string) (string, bool) {
+	if val, ok := ns.Attributes[key]; ok {
+		switch v := val.(type) {
+		case string:
+			return v, true
+		case fmt.Stringer:
+			return v.String(), true
+		case float64:
+			return strconv.FormatFloat(v, 'g', -1, 64), true
+		case bool:
+			return strconv.FormatBool(v), true
+		}
+	}
+	return "", false
+}
+func UdidToString(id []byte) string {
 	retval := ""
 
 	for i := 0; i < len(id); i++ {
@@ -28,11 +54,11 @@ func UidToString(id []byte) string {
 	return retval
 }
 
-func StringToUid(s string, id []byte) error {
+func StringToUdid(s string, id []byte) error {
 	src := []byte(s)
 
 	if len(id) < 8 {
-		return errors.New("Insufficient space to store node uid")
+		return errors.New("Insufficient space to store node uidAttr")
 	}
 
 	for i := 0; i < len(s); i += 3 {
@@ -47,56 +73,162 @@ func StringToUid(s string, id []byte) error {
 }
 
 type NodeModel struct {
-	Mutex  sync.RWMutex
-	States [128]*NodeState
-	Uids   map[[8]byte]Node
+	Mutex    sync.RWMutex
+	States   [128]*NodeState
+	Udids    map[string]Node
+	NodeFile string
 }
 
 func NewNodeModel() *NodeModel {
-	return &NodeModel{Uids: make(map[[8]byte]Node)}
+	return &NodeModel{Udids: make(map[string]Node)}
 }
 
-func (nm *NodeModel) Lookup(node []byte) (Node, bool) {
-	var udid [8]byte
+type NodeInfo struct {
+	Node       Node           `json:"node"`
+	Attributes NodeAttributes `json:"attributes"`
+}
 
-	if len(node) != 8 {
-		return Node(-1), false
+func (nm *NodeModel) LoadFromFile(nodefile string) error {
+	info := make(map[string]NodeInfo)
+
+	nm.Mutex.Lock()
+	defer nm.Mutex.Unlock()
+
+	nm.NodeFile = nodefile
+	data, err := ioutil.ReadFile(nodefile)
+	if err != nil {
+		return err
 	}
 
-	copy(udid[:], node)
+	err = json.Unmarshal(data, &info)
+	if err != nil {
+		clog.Fatal("JSON parsing error in %s: %s", nodefile, err.Error())
+	}
+
+	for k, v := range info {
+		if nm.States[v.Node] != nil {
+			clog.Warning("Node %d appears twice in %s, second instance will be ignored", v.Node, nodefile)
+		} else {
+			clog.Debug("Pre-registering %s as node %d", k, v.Node)
+			nm.States[v.Node] = &NodeState{Active: false, Id: v.Node, Udid: k, Attributes: v.Attributes}
+			nm.Udids[k] = v.Node
+		}
+	}
+	return nil
+}
+
+func (nm *NodeModel) SaveToFile() error {
+	info := make(map[string]NodeInfo)
 
 	nm.Mutex.RLock()
 	defer nm.Mutex.RUnlock()
 
-	if node, ok := nm.Uids[udid]; ok {
+	for k, v := range nm.Udids {
+		info[k] = NodeInfo{Node: v, Attributes: nm.States[v].Attributes}
+	}
+
+	js, err := json.MarshalIndent(info, "", "  ")
+	if err != nil {
+		return err
+	}
+	return ioutil.WriteFile(nm.NodeFile, js, 0644)
+}
+
+func (nm *NodeModel) ExpandKeywords(node Node, str string) (string, bool) {
+	nm.Mutex.Lock()
+	defer nm.Mutex.Unlock()
+
+	ns := nm.getState(node)
+	if ns == nil {
+		return "", false
+	}
+
+	var rval string
+	pos := 0
+	for pos < len(str) {
+		cval, size := utf8.DecodeRuneInString(str[pos:])
+		pos += size
+		switch cval {
+		case utf8.RuneError:
+			return "", false
+		case '$':
+			cval, size := utf8.DecodeRuneInString(str[pos:])
+			pos += size
+			switch cval {
+			case utf8.RuneError:
+				return "", false
+			case '$':
+				rval += "$"
+			case '{':
+				keyword := ""
+				for {
+					cval, size := utf8.DecodeRuneInString(str[pos:])
+					pos += size
+					if cval == utf8.RuneError {
+						return "", false
+					}
+					if cval == '}' {
+						break
+					}
+					keyword += string(cval)
+				}
+				if subs, ok := ns.getStringAttribute(keyword); ok {
+					rval += subs
+				}
+			default:
+				rval += "$" + string(cval)
+			}
+		default:
+			rval += string(cval)
+		}
+	}
+	return rval, true
+}
+
+func (nm *NodeModel) Lookup(node []byte) (Node, bool) {
+	if len(node) != 8 {
+		return Node(-1), false
+	}
+
+	udid := UdidToString(node)
+
+	nm.Mutex.RLock()
+	defer nm.Mutex.RUnlock()
+
+	if node, ok := nm.Udids[udid]; ok {
 		return node, true
 	}
 	return Node(-1), false
 }
 
 func (nm *NodeModel) Register(node []byte) (Node, error) {
-	var udid [8]byte
-
 	if len(node) != 8 {
 		return Node(-1), errors.New("Node identifier must be 8 bytes long")
 	}
 
-	copy(udid[:], node)
+	udid := UdidToString(node)
 
 	nm.Mutex.Lock()
-	defer nm.Mutex.Unlock()
 
-	if n, ok := nm.Uids[udid]; ok {
+	if n, ok := nm.Udids[udid]; ok {
+		nm.States[n].Active = true
+		nm.Mutex.Unlock()
 		return n, nil
 	}
 
 	for i := 0; i < 128; i++ {
 		if nm.States[i] == nil {
-			nm.Uids[udid] = Node(i)
-			nm.States[i] = &NodeState{Uid: udid, LastSeen: time.Now()}
+			nm.States[i] = &NodeState{Active: true, Udid: udid, Id: Node(i)}
+			nm.Udids[udid] = Node(i)
+			nm.Mutex.Unlock()
+			if err := nm.SaveToFile(); err != nil {
+				clog.Warning("Failed to save node info: %s", err.Error())
+			}
 			return Node(i), nil
 		}
 	}
+
+	nm.Mutex.Unlock()
 	return Node(-1), errors.New("Maximum number of nodes has been reached.")
 }
 
@@ -108,7 +240,7 @@ func (nm *NodeModel) Unregister(node Node) bool {
 	if ns == nil {
 		return false
 	}
-	delete(nm.Uids, ns.Uid)
+	delete(nm.Udids, ns.Udid)
 	nm.States[node] = nil
 	return true
 }
@@ -143,27 +275,31 @@ func (nm *NodeModel) Unsubscribe(node Node, topic_bitmap []byte) bool {
 	return false
 }
 
-func (nm *NodeModel) GetProperties(node Node) map[string]interface{} {
+func (nm *NodeModel) GetProperties(node Node) *NodeState {
 	nm.Mutex.RLock()
 	defer nm.Mutex.RUnlock()
 
 	if ns := nm.getState(node); ns != nil {
-		props := make(map[string]interface{})
+		/*
+			props := make(map[string]interface{})
 
-		props["id"] = UidToString(ns.Uid[:])
-		props["last_seen"] = ns.LastSeen.UTC().String()
-		props["subscriptions"] = bitmap.Bitmap64ToSlice(ns.Subscriptions[:])
-		props["attributes"] = make([]string, 0)
-		return props
+			props["id"] = UdidToString(ns.Udid[:])
+			props["last_seen"] = ns.LastSeen.UTC().String()
+			props["subscriptions"] = bitmap.Bitmap64ToSlice(ns.Subscriptions[:])
+			props["attributes"] = make([]string, 0)
+			return props
+		*/
+		return ns
 	}
 	return nil
 }
 
-func (nm *NodeModel) ByUid(uid [8]byte) (Node, bool) {
+func (nm *NodeModel) ByUdid(uid [8]byte) (Node, bool) {
 	nm.Mutex.RLock()
 	defer nm.Mutex.RUnlock()
 
-	if n, ok := nm.Uids[uid]; ok {
+	udid := UdidToString(uid[:])
+	if n, ok := nm.Udids[udid]; ok {
 		return n, true
 	}
 	return Node(-1), false
@@ -193,5 +329,8 @@ func (nm *NodeModel) getState(node Node) *NodeState {
 	if node < 0 {
 		return nil
 	}
-	return nm.States[node]
+	if nm.States[node] != nil && nm.States[node].Active {
+		return nm.States[node]
+	}
+	return nil
 }

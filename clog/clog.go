@@ -3,7 +3,7 @@ package clog
 import (
 	//    "fmt"
 	"log"
-	//	"os"
+	"os"
 	"sync"
 )
 
@@ -70,6 +70,10 @@ func Warning(format string, v ...interface{}) {
 
 func Error(format string, v ...interface{}) {
 	Log(ERROR, format, v...)
+}
+func Fatal(format string, v ...interface{}) {
+	Log(ERROR, format, v...)
+	os.Exit(1)
 }
 
 func Info(format string, v ...interface{}) {

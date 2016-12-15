@@ -14,7 +14,7 @@ function display_nodes() {
                 node.append($("<p/>")
                     .addClass("widget-item")
                     .append($("<strong/>")
-                        .text(xdata.id)
+                        .text(xdata.udid)
                     )
                 )
                 node.append($("<p/>", {"class": "widget-item"}).text("Last seen: " + xdata.last_seen))

@@ -58,7 +58,7 @@ func (port *Port) WaitForSystemMessage(node Node, fn uint8, timeout time.Duratio
 	for {
 		select {
 		case m := <-port.Input:
-			clog.Debug("$$$$$ Check that %d == %d and %d == %d", m.Id.GetNode(), node, m.Id.GetSysFunc(), fn)
+			//clog.Debug("$$$$$ Check that %d == %d and %d == %d", m.Id.GetNode(), node, m.Id.GetSysFunc(), fn)
 			if m.Id.GetNode() == node && m.Id.GetSysFunc() == fn {
 				return m
 			}

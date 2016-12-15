@@ -33,13 +33,15 @@ func main() {
 	main := nocan.NewMainTask(portmanager)
 	main.Topics.Model.Register("/clock")
 	main.Topics.Model.Register("pizza")
-	model.StringToUid("01:02:03:04:05:06:07:88", id[:])
+	model.StringToUdid("01:02:03:04:05:06:07:88", id[:])
 	main.Nodes.Model.Register(id[:])
 
-	st := nocan.NewSerialTask(portmanager, "/dev/cu.usbmodem12341")
-	if st != nil {
-		go st.Run()
+	driver, err := model.NewDriver("/dev/cu.usbmodem12341")
+	if err != nil {
+		panic(err)
 	}
+	main.Drivers.Model.Add(driver)
+
 	lt := nocan.NewLogTask(portmanager)
 	if lt != nil {
 		go lt.Run()
@@ -53,10 +55,14 @@ func main() {
 	main.Router.PUT("/api/topics/*topic", main.Topics.Update)
 	main.Router.GET("/api/nodes", main.Nodes.Index)
 	main.Router.GET("/api/nodes/:node", main.Nodes.Show)
+	main.Router.PUT("/api/nodes/:node", main.Nodes.Update)
 	main.Router.GET("/api/nodes/:node/flash", main.Nodes.Firmware.Show)
-	main.Router.PUT("/api/nodes/:node/flash", main.Nodes.Firmware.Update)
+	main.Router.POST("/api/nodes/:node/flash", main.Nodes.Firmware.Create)
 	main.Router.GET("/api/nodes/:node/eeprom", main.Nodes.Firmware.Show)
-	main.Router.PUT("/api/nodes/:node/eeprom", main.Nodes.Firmware.Update)
+	main.Router.POST("/api/nodes/:node/eeprom", main.Nodes.Firmware.Create)
+	main.Router.GET("/api/drivers", main.Drivers.Index)
+	main.Router.GET("/api/drivers/:driver", main.Drivers.Show)
+	main.Router.PUT("/api/drivers/:driver", main.Drivers.Update)
 	//main.Router.GET("/api/ports", main.Ports.Index)
 	main.Router.ServeFiles("/static/*filepath", http.Dir("../static"))
 	main.Router.GET("/nodes", nodepage.Index)

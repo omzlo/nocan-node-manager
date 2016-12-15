@@ -21,17 +21,20 @@ type NodeController struct {
 	Firmware NodeFirmwareController
 }
 
-func NewNodeController(manager *model.PortManager) *NodeController {
+func NewNodeController(manager *model.PortManager, nodeinfo string) *NodeController {
 	controller := &NodeController{Model: model.NewNodeModel(), BaseTask: BaseTask{manager, manager.CreatePort("nodes")}}
+	if err := controller.Model.LoadFromFile(nodeinfo); err != nil {
+		clog.Warning("Could not load node information form %s: %s", nodeinfo, err.Error())
+	}
 	controller.Firmware.ParentController = controller
 	return controller
 }
 
 func (nc *NodeController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	var res []string
+	var res []model.Node
 
-	nc.Model.Each(func(_ model.Node, state *model.NodeState, _ interface{}) {
-		res = append(res, model.UidToString(state.Uid[:]))
+	nc.Model.Each(func(n model.Node, _ *model.NodeState, _ interface{}) {
+		res = append(res, n)
 	}, nil)
 
 	RenderJSON(w, res)
@@ -40,10 +43,10 @@ func (nc *NodeController) Index(w http.ResponseWriter, r *http.Request, _ httpro
 func (nc *NodeController) GetNode(nodeName string) (model.Node, bool) {
 	if len(nodeName) > 3 {
 		var uid [8]byte
-		if err := model.StringToUid(nodeName, uid[:]); err != nil {
+		if err := model.StringToUdid(nodeName, uid[:]); err != nil {
 			return model.Node(-1), false
 		}
-		return nc.Model.ByUid(uid)
+		return nc.Model.ByUdid(uid)
 	}
 
 	node, err := strconv.Atoi(nodeName)
@@ -57,7 +60,6 @@ func (nc *NodeController) GetNode(nodeName string) (model.Node, bool) {
 
 func (nc *NodeController) Show(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	node, ok := nc.GetNode(params.ByName("node"))
-	clog.Debug("NODE=%d %t", node, ok)
 	if !ok {
 		http.Error(w, "Node does not exist", http.StatusNotFound)
 		return
@@ -72,24 +74,56 @@ func (nc *NodeController) Show(w http.ResponseWriter, r *http.Request, params ht
 	RenderJSON(w, props)
 }
 
-/*
-func (tc *NodeController) Update(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (nc *NodeController) Update(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	node, ok := nc.GetNode(params.ByName("node"))
+	if !ok {
+		http.Error(w, "Node does not exist", http.StatusNotFound)
+		return
+	}
 
+	if nc.Model.GetProperties(node) == nil {
+		http.Error(w, "Node does not exist", http.StatusNotFound)
+		return
+	}
+
+	r.ParseForm()
+
+	port := nc.PortManager.CreatePort("update-node")
+	defer nc.PortManager.DestroyPort(port)
+
+	switch r.Form.Get("c") {
+	case "reboot":
+		port.SendSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil)
+		if port.WaitForSystemMessage(node, NOCAN_SYS_NODE_BOOT_ACK, model.DEFAULT_TIMEOUT) == nil {
+			LogHttpError(w, "Node could not be rebooted", http.StatusServiceUnavailable)
+			return
+		}
+	case "ping":
+		port.SendSystemMessage(node, NOCAN_SYS_NODE_PING, 0, nil)
+		if port.WaitForSystemMessage(node, NOCAN_SYS_NODE_PING_ACK, model.DEFAULT_TIMEOUT) == nil {
+			LogHttpError(w, "Node could not be pinged", http.StatusServiceUnavailable)
+			return
+		}
+	default:
+		LogHttpError(w, "Unknown command", http.StatusBadRequest)
+		return
+	}
 }
-*/
 
 func (nc *NodeController) Run() {
 	for {
 		m := <-nc.Port.Input
+
+		nc.Model.Touch(m.Id.GetNode())
 
 		if m.Id.IsSystem() {
 			switch m.Id.GetSysFunc() {
 			case NOCAN_SYS_ADDRESS_REQUEST:
 				node_id, err := nc.Model.Register(m.Data)
 				if err != nil {
-					clog.Warning("NOCAN_SYS_ADDRESS_REQUEST: Failed to register %s, %s", model.UidToString(m.Data), err.Error())
+					clog.Warning("NOCAN_SYS_ADDRESS_REQUEST: Failed to register %s, %s", model.UdidToString(m.Data), err.Error())
 				} else {
-					clog.Info("NOCAN_SYS_ADDRESS_REQUEST: Registered %s as node %d", model.UidToString(m.Data), node_id)
+					clog.Info("NOCAN_SYS_ADDRESS_REQUEST: Registered %s as node %d", model.UdidToString(m.Data), node_id)
 				}
 				msg := model.NewSystemMessage(0, NOCAN_SYS_ADDRESS_CONFIGURE, uint8(node_id), m.Data)
 				nc.Port.SendMessage(msg)
@@ -135,6 +169,8 @@ func (nfc *NodeFirmwareController) DownloadFirmware(node model.Node, memtype byt
 
 	port := nfc.ParentController.PortManager.CreatePort("firmware-download")
 	defer nfc.ParentController.PortManager.DestroyPort(port)
+
+	port.SendSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil)
 
 	if port.WaitForSystemMessage(node, NOCAN_SYS_NODE_BOOT_ACK, model.EXTENDED_TIMEOUT) == nil {
 		clog.Error("NOCAN_SYS_NODE_BOOT_ACK failed for node %d", node)
@@ -286,18 +322,27 @@ func (nfc *NodeFirmwareController) Show(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
-func (nfc *NodeFirmwareController) Update(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+func (nfc *NodeFirmwareController) Create(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	node, fwtype, ok := nfc.GetFirmwareNodeAndType(w, r, params)
 	if !ok {
 		return
 	}
+
+	r.ParseMultipartForm(1 << 20)
+	file, header, err := r.FormFile("firmware")
+	if err != nil {
+		LogHttpError(w, "Bad request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
 	ihex := intelhex.New()
-	if err := ihex.Load(r.Body); err != nil {
-		LogHttpError(w, "Failed to upload firmware: "+err.Error(), http.StatusBadRequest)
+	if err := ihex.Load(file); err != nil {
+		LogHttpError(w, "Failed to parse firmware: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	clog.Debug("Uploaded firmware is %d bytes", ihex.Size)
+	clog.Debug("Uploaded firmware '%s' is %d bytes", header.Filename, ihex.Size)
 
 	if !atomic.CompareAndSwapInt32(&nfc.Inprogress, 0, 1) {
 		LogHttpError(w, "Firmware upload or download already in progress\n", http.StatusConflict)

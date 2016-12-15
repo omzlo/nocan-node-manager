@@ -2,7 +2,7 @@ package nocan
 
 import (
 	"github.com/julienschmidt/httprouter"
-	"io/ioutil"
+	//"io/ioutil"
 	"net/http"
 	"pannetrat.com/nocan/clog"
 	"pannetrat.com/nocan/model"
@@ -11,13 +11,14 @@ import (
 
 type TopicController struct {
 	BaseTask
-	Model *model.TopicModel
+	Model     *model.TopicModel
+	NodeModel *model.NodeModel
 	//PortManager *model.PortManager
 	//Port        *model.Port
 }
 
-func NewTopicController(manager *model.PortManager) *TopicController {
-	return &TopicController{Model: model.NewTopicModel(), BaseTask: BaseTask{manager, manager.CreatePort("topics")}}
+func NewTopicController(manager *model.PortManager, nodes *model.NodeModel) *TopicController {
+	return &TopicController{Model: model.NewTopicModel(), NodeModel: nodes, BaseTask: BaseTask{manager, manager.CreatePort("topics")}}
 }
 
 func (tc *TopicController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -56,9 +57,12 @@ func (tc *TopicController) Update(w http.ResponseWriter, r *http.Request, params
 		http.Error(w, "Topic "+topicName+" does not exist", http.StatusNotFound)
 		return
 	}
-	body, _ := ioutil.ReadAll(r.Body)
-	tc.Model.SetContent(topic, body)
-	tc.Port.Publish(0, topic, body)
+
+	r.ParseForm()
+
+	value := []byte(r.Form.Get("value"))
+	tc.Model.SetContent(topic, value)
+	tc.Port.Publish(0, topic, value)
 }
 
 func (tc *TopicController) Run() {
@@ -68,11 +72,18 @@ func (tc *TopicController) Run() {
 		if m.Id.IsSystem() {
 			switch m.Id.GetSysFunc() {
 			case NOCAN_SYS_TOPIC_REGISTER:
-				topic_id, err := tc.Model.Register(string(m.Data))
-				if err != nil {
-					clog.Warning("NOCAN_SYS_TOPIC_REGISTER: Failed to register topic %s, %s", string(m.Data), err.Error())
+				var topic_id model.Topic
+				topic_expanded, ok := tc.NodeModel.ExpandKeywords(m.Id.GetNode(), string(m.Data))
+				if ok {
+					topic_id, err := tc.Model.Register(topic_expanded)
+					if err != nil {
+						clog.Warning("NOCAN_SYS_TOPIC_REGISTER: Failed to register topic %s (expanded from %s) for node %d, %s", topic_expanded, string(m.Data), m.Id.GetNode(), err.Error())
+					} else {
+						clog.Info("NOCAN_SYS_TOPIC_REGISTER: Registered topic %s for node %d as %d", topic_expanded, m.Id.GetNode(), topic_id)
+					}
 				} else {
-					clog.Info("NOCAN_SYS_TOPIC_REGISTER: Registered topic %s as %d", string(m.Data), topic_id)
+					topic_id = -1
+					clog.Warning("NOCAN_SYS_TOPIC_REGISTER: Failed to expand topic name '%s' for node %d", string(m.Data), m.Id.GetNode())
 				}
 				msg := model.NewSystemMessage(m.Id.GetNode(), NOCAN_SYS_TOPIC_REGISTER_ACK, uint8(topic_id), nil)
 				tc.Port.SendMessage(msg)
