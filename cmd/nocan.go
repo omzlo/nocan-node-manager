@@ -2,49 +2,75 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	//"io/ioutil"
 	"net/http"
 	"pannetrat.com/nocan"
 	"pannetrat.com/nocan/clog"
-	"pannetrat.com/nocan/intelhex"
+	//"pannetrat.com/nocan/intelhex"
+	"flag"
 	"pannetrat.com/nocan/model"
 	"strings"
 )
 
+type multiString []string
+
+func (d *multiString) String() string {
+	return fmt.Sprintf("%v", *d)
+}
+
+func (d *multiString) Set(value string) error {
+	for _, str := range strings.Split(value, ",") {
+		*d = append(*d, str)
+	}
+	return nil
+}
+
+var (
+	optDeviceStrings multiString
+	optTopics        multiString
+	optLogTask       bool
+)
+
+func init() {
+	flag.Var(&optDeviceStrings, "interface", "Interface to connect to (may be repeated)")
+	flag.BoolVar(&optLogTask, "log-task", false, "Add a logging task (helps debug)")
+	flag.Var(&optTopics, "topic", "Register a topic (may be repeated)")
+}
+
 func main() {
 	var id [8]byte
 
-	fmt.Println("Start")
+	flag.Parse()
 
-	//if se != nil {
-	//	se.Close()
-	//}
-
-	data, _ := ioutil.ReadFile("test.hex")
-
-	ih := intelhex.New()
-	err := ih.Load(strings.NewReader(string(data)))
-	if err != nil {
-		clog.Error("%s", err.Error())
-	}
+	clog.Debug("Start")
 
 	portmanager := model.NewPortManager()
 
 	main := nocan.NewMainTask(portmanager)
-	main.Topics.Model.Register("/clock")
-	main.Topics.Model.Register("pizza")
 	model.StringToUdid("01:02:03:04:05:06:07:88", id[:])
 	main.Nodes.Model.Register(id[:])
 
-	driver, err := model.NewDriver("/dev/cu.usbmodem12341")
-	if err != nil {
-		panic(err)
+	if len(optDeviceStrings) > 0 {
+		for _, itr := range optDeviceStrings {
+			device, err := model.NewDriver(itr)
+			if err != nil {
+				return
+			}
+			main.Drivers.Model.Add(device)
+		}
+	} else {
+		clog.Warning("No interface was specified! Not much to do here.")
 	}
-	main.Drivers.Model.Add(driver)
 
-	lt := nocan.NewLogTask(portmanager)
-	if lt != nil {
-		go lt.Run()
+	for _, itr := range optTopics {
+		main.Topics.Model.Register(itr)
+	}
+
+	if optLogTask {
+		lt := nocan.NewLogTask(portmanager)
+		if lt != nil {
+			go lt.Run()
+		}
 	}
 
 	homepage := nocan.NewHomePageController()

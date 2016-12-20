@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"fmt"
 	"pannetrat.com/nocan/clog"
 	"sync"
 	"time"
@@ -39,6 +40,12 @@ const (
 	SERIAL_CAN_CTRL_RESISTOR_CONFIGURE = 5
 )
 
+const (
+	POWER_FLAGS_SUPPLY = 1
+	POWER_FLAGS_SENSE  = 2
+	POWER_FLAGS_FAULT  = 4
+)
+
 type DriverId uint8
 
 type Driver struct {
@@ -51,8 +58,9 @@ type Driver struct {
 	RequestStatus [6]SerialCanRequest `json:"-"`
 	PowerStatus   struct {
 		PowerOn      bool    `json:"power_on"`
-		PowerLevel   float32 `json:"power_level"`
 		SenseOn      bool    `json:"sense_on"`
+		Fault        bool    `json:"fault"`
+		PowerLevel   float32 `json:"power_level"`
 		SenseLevel   float32 `json:"sense_level"`
 		UsbReference float32 `json:"usb_reference"`
 	} `json:"power_status"`
@@ -69,7 +77,39 @@ func NewDriver(deviceName string) (*Driver, error) {
 
 	driver := &Driver{Serial: serial, DeviceName: deviceName, Connected: true}
 
+	if err = driver.Reset(); err != nil {
+		clog.Error(err.Error())
+		return nil, err
+	}
+
 	return driver, nil
+}
+
+func (ds *Driver) Reset() error {
+	var frame CanFrame
+
+	frame.CanId = CanId(CANID_MASK_CONTROL).SetSysFunc(SERIAL_CAN_CTRL_RESET).SetSysParam(0)
+	frame.CanDlc = 0
+	ds.Serial.Send(&frame)
+
+	status := make(chan error, 1)
+
+	go func() {
+		time.Sleep(3 * time.Second)
+		status <- fmt.Errorf("Timeout while resetting %s", ds.DeviceName)
+	}()
+	go func() {
+		if ds.Serial.Recv(&frame) == false {
+			status <- fmt.Errorf("Failed to receive data from %s", ds.DeviceName)
+		}
+		if !frame.CanId.IsExtended() || frame.CanId.GetSysFunc() != SERIAL_CAN_CTRL_RESET || frame.CanId.GetSysParam() != 0 {
+			status <- fmt.Errorf("Incorrect response to reset from %s", ds.DeviceName)
+		}
+		status <- nil
+	}()
+
+	err := <-status
+	return err
 }
 
 func (ds *Driver) Rescue() bool {
@@ -79,8 +119,12 @@ func (ds *Driver) Rescue() bool {
 		if err == nil {
 			ds.Serial = serial
 			clog.Info("Reopened device %s", ds.DeviceName)
-			ds.SendReset()
-			return true
+			if err = ds.Reset(); err != nil {
+				clog.Warning(err.Error())
+				return false
+			} else {
+				return true
+			}
 		} else {
 			clog.Warning("Failed to reopen device %s: %s", ds.DeviceName, err.Error())
 		}
@@ -141,24 +185,24 @@ func (ds *Driver) SendUpdatePowerStatus() (*SerialCanRequest, error) {
 	return ds.performAction(SERIAL_CAN_CTRL_GET_POWER_STATUS, 0, nil)
 }
 
+/*
 func (ds *Driver) SendReset() (*SerialCanRequest, error) {
 	return ds.performAction(SERIAL_CAN_CTRL_RESET, 0, nil)
 }
+*/
 
 func (ds *Driver) ProcessFrames(port *Port) {
 	for {
 		var frame CanFrame
 
-		//clog.Debug("Waiting for serial input")
 		if ds.Serial.Recv(&frame) == false {
-			clog.Error("Failed to receive frame from %s", ds.DeviceName)
+			clog.Error("Failed to receive frame from %s, will re-connect driver", ds.DeviceName)
 			if ds.Rescue() {
 				continue
 			} else {
 				break
 			}
 		}
-		//clog.Debug("Got serial input")
 
 		node := frame.CanId.GetNode()
 
@@ -181,18 +225,23 @@ func (ds *Driver) ProcessFrames(port *Port) {
 				}
 			case SERIAL_CAN_CTRL_GET_POWER_STATUS:
 				if frame.CanId.GetSysParam() == 0 {
-					usbref := (uint16(frame.CanData[6]) << 8) | uint16(frame.CanData[7])
+					usbref := (uint16(frame.CanData[5]) << 8) | uint16(frame.CanData[6])
 					powerlevel := (uint16(frame.CanData[1]) << 8) | uint16(frame.CanData[2])
-					senselevel := (uint16(frame.CanData[4]) << 8) | uint16(frame.CanData[5])
-					ds.PowerStatus.PowerOn = frame.CanData[0] != 0
+					senselevel := (uint16(frame.CanData[3]) << 8) | uint16(frame.CanData[4])
+					ds.PowerStatus.PowerOn = ((frame.CanData[0] & POWER_FLAGS_SUPPLY) != 0)
+					ds.PowerStatus.SenseOn = ((frame.CanData[0] & POWER_FLAGS_SENSE) != 0)
+					ds.PowerStatus.Fault = ((frame.CanData[0] & POWER_FLAGS_FAULT) != 0)
 					ds.PowerStatus.PowerLevel = float32(powerlevel) / float32(usbref) * 1.1 * 9.2
-					ds.PowerStatus.SenseOn = frame.CanData[3] != 0
 					ds.PowerStatus.SenseLevel = 100 * float32(senselevel) / 1023
 					ds.PowerStatus.UsbReference = 1023 * 1.1 / float32(usbref)
-					clog.Info("Power stat estimates: power=%t power_level=%.2fV sense=%t sense_level=%.3f%% usb_power=%.2fV",
+					errLevel := clog.INFO
+					if ds.PowerStatus.Fault {
+						errLevel = clog.WARNING
+					}
+					clog.Log(errLevel, "Power stat estimates: power=%t power_level=%.2fV sense=%t sense_level=%.3f%% fault=%t usb_power=%.2fV",
 						ds.PowerStatus.PowerOn, ds.PowerStatus.PowerLevel,
 						ds.PowerStatus.SenseOn, ds.PowerStatus.SenseLevel,
-						ds.PowerStatus.UsbReference)
+						ds.PowerStatus.Fault, ds.PowerStatus.UsbReference)
 					ds.finalizeAction(SERIAL_CAN_CTRL_GET_POWER_STATUS, SERIAL_CAN_REQUEST_STATUS_SUCCESS)
 				} else {
 					ds.finalizeAction(SERIAL_CAN_CTRL_GET_POWER_STATUS, SERIAL_CAN_REQUEST_STATUS_FAILURE)
@@ -260,7 +309,6 @@ func (ds *Driver) ProcessMessages(port *Port) {
 
 func (ds *Driver) Run(port *Port) {
 	go ds.ProcessFrames(port)
-	ds.SendReset()
 	ds.SendUpdatePowerStatus()
 	ds.ProcessMessages(port)
 }
