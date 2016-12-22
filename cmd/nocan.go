@@ -3,11 +3,11 @@ package main
 import (
 	"fmt"
 	//"io/ioutil"
+	"flag"
 	"net/http"
 	"pannetrat.com/nocan"
 	"pannetrat.com/nocan/clog"
-	//"pannetrat.com/nocan/intelhex"
-	"flag"
+	"pannetrat.com/nocan/controller"
 	"pannetrat.com/nocan/model"
 	"strings"
 )
@@ -44,9 +44,7 @@ func main() {
 
 	clog.Debug("Start")
 
-	portmanager := model.NewPortManager()
-
-	main := nocan.NewMainTask(portmanager)
+	main := controller.NewApplication()
 	model.StringToUdid("01:02:03:04:05:06:07:88", id[:])
 	main.Nodes.Model.Register(id[:])
 
@@ -67,14 +65,14 @@ func main() {
 	}
 
 	if optLogTask {
-		lt := nocan.NewLogTask(portmanager)
+		lt := nocan.NewLogTask(main)
 		if lt != nil {
 			go lt.Run()
 		}
 	}
 
-	homepage := nocan.NewHomePageController()
-	nodepage := nocan.NewNodePageController()
+	homepage := controller.NewHomePageController()
+	nodepage := controller.NewNodePageController()
 
 	main.Router.GET("/api/topics", main.Topics.Index)
 	main.Router.GET("/api/topics/*topic", main.Topics.Show)
@@ -89,6 +87,7 @@ func main() {
 	main.Router.GET("/api/drivers", main.Drivers.Index)
 	main.Router.GET("/api/drivers/:driver", main.Drivers.Show)
 	main.Router.PUT("/api/drivers/:driver", main.Drivers.Update)
+	main.Router.GET("/api/jobs/:id", main.Jobs.Show)
 	//main.Router.GET("/api/ports", main.Ports.Index)
 	main.Router.ServeFiles("/static/*filepath", http.Dir("../static"))
 	main.Router.GET("/nodes", nodepage.Index)

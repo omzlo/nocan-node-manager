@@ -1,19 +1,21 @@
-package nocan
+package controller
 
 import (
 	"github.com/julienschmidt/httprouter"
 	"net/http"
 	"pannetrat.com/nocan/model"
+	"pannetrat.com/nocan/view"
 	"strconv"
 )
 
 type DriverController struct {
-	BaseTask
-	Model *model.DriverModel
+	Application *Application
+	Port        *model.Port
+	Model       *model.DriverModel
 }
 
-func NewDriverController(manager *model.PortManager) *DriverController {
-	return &DriverController{BaseTask: BaseTask{manager, manager.CreatePort("driver")}, Model: model.NewDriverModel()}
+func NewDriverController(app *Application) *DriverController {
+	return &DriverController{Application: app, Port: app.PortManager.CreatePort("driver"), Model: model.NewDriverModel()}
 }
 
 func (dc *DriverController) GetDriver(driverName string) *model.Driver {
@@ -31,22 +33,22 @@ func (dc *DriverController) Index(w http.ResponseWriter, r *http.Request, _ http
 		res = append(res, int(i))
 	}
 
-	RenderJSON(w, res)
+	view.RenderJSON(w, res)
 }
 
 func (dc *DriverController) Show(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	driver := dc.GetDriver(params.ByName("driver"))
 	if driver == nil {
-		LogHttpError(w, "Driver does not exist", http.StatusNotFound)
+		view.LogHttpError(w, "Driver does not exist", http.StatusNotFound)
 		return
 	}
-	RenderJSON(w, driver)
+	view.RenderJSON(w, driver)
 }
 
 func (dc *DriverController) Update(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	driver := dc.GetDriver(params.ByName("driver"))
 	if driver == nil {
-		LogHttpError(w, "Driver does not exist", http.StatusNotFound)
+		view.LogHttpError(w, "Driver does not exist", http.StatusNotFound)
 		return
 	}
 
@@ -61,16 +63,16 @@ func (dc *DriverController) Update(w http.ResponseWriter, r *http.Request, param
 	case "poweroff":
 		req, err = driver.SendSetPower(model.DRIVER_POWER_OFF)
 	default:
-		LogHttpError(w, "missing or incorrect 'c' parameter in request", http.StatusBadRequest)
+		view.LogHttpError(w, "missing or incorrect 'c' parameter in request", http.StatusBadRequest)
 		return
 	}
 
 	if err != nil {
-		LogHttpError(w, err.Error(), http.StatusServiceUnavailable)
+		view.LogHttpError(w, err.Error(), http.StatusServiceUnavailable)
 	}
 
 	if success := <-req.C; success != model.SERIAL_CAN_REQUEST_STATUS_SUCCESS {
-		LogHttpError(w, "Command failed", http.StatusInternalServerError)
+		view.LogHttpError(w, "Command failed", http.StatusInternalServerError)
 	}
 }
 
@@ -86,7 +88,7 @@ type DriverControlController struct {
 func (dcc *DriverControlController) Create(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	driver := dcc.GetDriver(params.ByName("driver"))
 	if driver==nil {
-		LogHttpError(w, "Driver does not exist", http.StatusNotFound)
+		view.LogHttpError(w, "Driver does not exist", http.StatusNotFound)
 		return
 	}
 
@@ -101,16 +103,16 @@ func (dcc *DriverControlController) Create(w http.ResponseWriter, r *http.Reques
 	case "poweroff":
 		req, err = driver.SendSetPower(model.DRIVER_POWER_OFF)
 	default:
-		LogHttpError(w, "missing or incorrect 'c' parameter in form", http.StatusBadRequest)
+		view.LogHttpError(w, "missing or incorrect 'c' parameter in form", http.StatusBadRequest)
 		return
 	}
 
 	if err!=nil {
-		LogHttpError(w, err.Error(), http.StatusServiceUnavailable)
+		view.LogHttpError(w, err.Error(), http.StatusServiceUnavailable)
 	}
 
 	if !<-req.C {
-		LogHttpError(w, "Command failed", http.Status
+		view.LogHttpError(w, "Command failed", http.Status
 	}
 }
 */

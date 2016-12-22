@@ -1,42 +1,45 @@
-package nocan
+package controller
 
 import (
 	"github.com/julienschmidt/httprouter"
 	"net/http"
-	//	"pannetrat.com/nocan/bitmap"
 	"pannetrat.com/nocan/clog"
 	"pannetrat.com/nocan/model"
 	"strings"
 )
 
-type MainTask struct {
-	BaseTask
-	//PortManager *model.PortManager
+type Application struct {
 	//Port        *model.Port
-	Router  *httprouter.Router
-	Topics  *TopicController
-	Nodes   *NodeController
-	Drivers *DriverController
+	PortManager *model.PortManager
+	Router      *httprouter.Router
+	Topics      *TopicController
+	Nodes       *NodeController
+	Drivers     *DriverController
+	Jobs        *JobController
 }
 
-func NewMainTask(pm *model.PortManager) *MainTask {
-	app := &MainTask{}
-	app.PortManager = pm
+func NewApplication() *Application {
+	app := &Application{}
+	app.PortManager = model.NewPortManager()
 	app.Router = httprouter.New()
-	app.Nodes = NewNodeController(app.PortManager, "nodes.dat")
-	app.Topics = NewTopicController(app.PortManager, app.Nodes.Model)
-	app.Drivers = NewDriverController(app.PortManager)
+	app.Nodes = NewNodeController(app, "nodes.dat")
+	app.Topics = NewTopicController(app)
+	app.Drivers = NewDriverController(app)
+	app.Jobs = NewJobController(app)
 	return app
 }
 
-func (app *MainTask) ProcessRecv(port *model.Port) {
+/*
+func (app *Application) ProcessRecv(port *model.Port) {
 	<-port.Input
 }
+*/
 
-func (app *MainTask) Run() {
+func (app *Application) Run() {
 	go http.ListenAndServe(":8888", &CheckRouter{app.Router})
 	go app.Topics.Run()
 	go app.Drivers.Run()
+	go app.Jobs.Run()
 	app.Nodes.Run()
 }
 

@@ -1,24 +1,22 @@
-package nocan
+package controller
 
 import (
 	"github.com/julienschmidt/httprouter"
-	//"io/ioutil"
 	"net/http"
 	"pannetrat.com/nocan/clog"
 	"pannetrat.com/nocan/model"
+	"pannetrat.com/nocan/view"
 	"strings"
 )
 
 type TopicController struct {
-	BaseTask
-	Model     *model.TopicModel
-	NodeModel *model.NodeModel
-	//PortManager *model.PortManager
-	//Port        *model.Port
+	Application *Application
+	Port        *model.Port
+	Model       *model.TopicModel
 }
 
-func NewTopicController(manager *model.PortManager, nodes *model.NodeModel) *TopicController {
-	return &TopicController{Model: model.NewTopicModel(), NodeModel: nodes, BaseTask: BaseTask{manager, manager.CreatePort("topics")}}
+func NewTopicController(app *Application) *TopicController {
+	return &TopicController{Application: app, Port: app.PortManager.CreatePort("topics"), Model: model.NewTopicModel()}
 }
 
 func (tc *TopicController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
@@ -28,7 +26,7 @@ func (tc *TopicController) Index(w http.ResponseWriter, r *http.Request, _ httpr
 		res = append(res, state.Name)
 	}, nil)
 
-	RenderJSON(w, res)
+	view.RenderJSON(w, res)
 }
 
 func TrimLeftSlash(s string) string {
@@ -73,7 +71,7 @@ func (tc *TopicController) Run() {
 			switch m.Id.GetSysFunc() {
 			case NOCAN_SYS_TOPIC_REGISTER:
 				var topic_id model.Topic
-				topic_expanded, ok := tc.NodeModel.ExpandKeywords(m.Id.GetNode(), string(m.Data))
+				topic_expanded, ok := tc.Application.Nodes.Model.ExpandKeywords(m.Id.GetNode(), string(m.Data))
 				if ok {
 					topic_id, err := tc.Model.Register(topic_expanded)
 					if err != nil {

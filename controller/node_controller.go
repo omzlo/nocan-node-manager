@@ -1,6 +1,7 @@
-package nocan
+package controller
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/julienschmidt/httprouter"
 	"net/http"
@@ -8,25 +9,25 @@ import (
 	"pannetrat.com/nocan/clog"
 	"pannetrat.com/nocan/intelhex"
 	"pannetrat.com/nocan/model"
+	"pannetrat.com/nocan/view"
 	"strconv"
 	"strings"
 	"sync/atomic"
 )
 
 type NodeController struct {
-	BaseTask
-	//PortManager *model.PortManager
-	//Port        *model.Port
-	Model    *model.NodeModel
-	Firmware NodeFirmwareController
+	Application *Application
+	Port        *model.Port
+	Model       *model.NodeModel
+	Firmware    NodeFirmwareController
 }
 
-func NewNodeController(manager *model.PortManager, nodeinfo string) *NodeController {
-	controller := &NodeController{Model: model.NewNodeModel(), BaseTask: BaseTask{manager, manager.CreatePort("nodes")}}
+func NewNodeController(app *Application, nodeinfo string) *NodeController {
+	controller := &NodeController{Port: app.PortManager.CreatePort("nodes"), Application: app, Model: model.NewNodeModel()}
 	if err := controller.Model.LoadFromFile(nodeinfo); err != nil {
 		clog.Warning("Could not load node information form %s: %s", nodeinfo, err.Error())
 	}
-	controller.Firmware.ParentController = controller
+	controller.Firmware.Application = app
 	return controller
 }
 
@@ -37,7 +38,7 @@ func (nc *NodeController) Index(w http.ResponseWriter, r *http.Request, _ httpro
 		res = append(res, n)
 	}, nil)
 
-	RenderJSON(w, res)
+	view.RenderJSON(w, res)
 }
 
 func (nc *NodeController) GetNode(nodeName string) (model.Node, bool) {
@@ -71,7 +72,7 @@ func (nc *NodeController) Show(w http.ResponseWriter, r *http.Request, params ht
 		return
 	}
 
-	RenderJSON(w, props)
+	view.RenderJSON(w, props)
 }
 
 func (nc *NodeController) Update(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -88,24 +89,24 @@ func (nc *NodeController) Update(w http.ResponseWriter, r *http.Request, params 
 
 	r.ParseForm()
 
-	port := nc.PortManager.CreatePort("update-node")
-	defer nc.PortManager.DestroyPort(port)
+	port := nc.Application.PortManager.CreatePort("update-node")
+	defer nc.Application.PortManager.DestroyPort(port)
 
 	switch r.Form.Get("c") {
 	case "reboot":
 		port.SendSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil)
 		if port.WaitForSystemMessage(node, NOCAN_SYS_NODE_BOOT_ACK, model.DEFAULT_TIMEOUT) == nil {
-			LogHttpError(w, "Node could not be rebooted", http.StatusServiceUnavailable)
+			view.LogHttpError(w, "Node could not be rebooted", http.StatusServiceUnavailable)
 			return
 		}
 	case "ping":
 		port.SendSystemMessage(node, NOCAN_SYS_NODE_PING, 0, nil)
 		if port.WaitForSystemMessage(node, NOCAN_SYS_NODE_PING_ACK, model.DEFAULT_TIMEOUT) == nil {
-			LogHttpError(w, "Node could not be pinged", http.StatusServiceUnavailable)
+			view.LogHttpError(w, "Node could not be pinged", http.StatusServiceUnavailable)
 			return
 		}
 	default:
-		LogHttpError(w, "Unknown command", http.StatusBadRequest)
+		view.LogHttpError(w, "Unknown command", http.StatusBadRequest)
 		return
 	}
 }
@@ -153,8 +154,8 @@ func (nc *NodeController) Run() {
 type NodeFirmwareController struct {
 	// For now, we will try to keep things simple by allowing only one firmware to be accessed simultaneously
 	// later, we whould integrate this in the node model.
-	ParentController *NodeController
-	Inprogress       int32
+	Application *Application
+	Inprogress  int32
 }
 
 const (
@@ -162,19 +163,21 @@ const (
 	READ_SIZE     = 2048
 )
 
-func (nfc *NodeFirmwareController) DownloadFirmware(node model.Node, memtype byte, memlength uint32) *intelhex.IntelHex {
+func (nfc *NodeFirmwareController) DownloadFirmware(state *model.JobState, node model.Node, memtype byte, memlength uint32) bool {
 	var address uint32
 	var i uint32
 	var data [8]byte
 
-	port := nfc.ParentController.PortManager.CreatePort("firmware-download")
-	defer nfc.ParentController.PortManager.DestroyPort(port)
+	port := nfc.Application.PortManager.CreatePort("firmware-download")
+	defer nfc.Application.PortManager.DestroyPort(port)
 
 	port.SendSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil)
 
 	if port.WaitForSystemMessage(node, NOCAN_SYS_NODE_BOOT_ACK, model.EXTENDED_TIMEOUT) == nil {
-		clog.Error("NOCAN_SYS_NODE_BOOT_ACK failed for node %d", node)
-		return nil
+		err := fmt.Errorf("NOCAN_SYS_NODE_BOOT_ACK failed for node %d", node)
+		state.UpdateStatus(model.JobFailed, err)
+		clog.Error(err.Error())
+		return false
 	}
 
 	ihex := intelhex.New()
@@ -187,34 +190,46 @@ func (nfc *NodeFirmwareController) DownloadFirmware(node model.Node, memtype byt
 		data[3] = byte(address & 0xFF)
 		port.SendSystemMessage(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS, memtype, data[:4])
 		if port.WaitForSystemMessage(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS_ACK, model.DEFAULT_TIMEOUT) == nil {
-			clog.Error("NOCAN_SYS_BOOTLOADER_SET_ADDRESS failed for node %d at address=0x%x", node, address)
-			return nil
+			err := fmt.Errorf("NOCAN_SYS_BOOTLOADER_SET_ADDRESS failed for node %d at address=0x%x", node, address)
+			state.UpdateStatus(model.JobFailed, err)
+			clog.Error(err.Error())
+			return false
 		}
 		for pos := 0; pos < SPM_PAGE_SIZE; pos += 8 {
 			port.SendSystemMessage(node, NOCAN_SYS_BOOTLOADER_READ, 8, nil)
 			response := port.WaitForSystemMessage(node, NOCAN_SYS_BOOTLOADER_READ_ACK, model.DEFAULT_TIMEOUT)
 			if response == nil {
-				clog.Error("NOCAN_SYS_BOOTLOADER_READ failed for node %d at address=0x%x", node, address)
-				return nil
+				err := fmt.Errorf("NOCAN_SYS_BOOTLOADER_READ failed for node %d at address=0x%x", node, address)
+				state.UpdateStatus(model.JobFailed, err)
+				clog.Error(err.Error())
+				return false
 			}
 			ihex.Add(0, address, response.Data)
 			address += 8
 		}
+		state.UpdateProgress(uint(address * 100 / memlength))
 	}
-	return ihex
+	var buf bytes.Buffer
+	ihex.Save(&buf)
+	state.Result = buf.Bytes()
+	state.UpdateProgress(100)
+	state.UpdateStatus(model.JobCompleted, nil)
+	return true
 }
 
-func (nfc *NodeFirmwareController) UploadFirmware(node model.Node, memtype byte, ihex *intelhex.IntelHex) bool {
+func (nfc *NodeFirmwareController) UploadFirmware(state *model.JobState, node model.Node, memtype byte, ihex *intelhex.IntelHex) bool {
 	var address uint32
 	var data [8]byte
 
-	port := nfc.ParentController.PortManager.CreatePort("firmware-upload")
-	defer nfc.ParentController.PortManager.DestroyPort(port)
+	port := nfc.Application.PortManager.CreatePort("firmware-upload")
+	defer nfc.Application.PortManager.DestroyPort(port)
 
 	port.SendSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil)
 
 	if port.WaitForSystemMessage(node, NOCAN_SYS_NODE_BOOT_ACK, model.EXTENDED_TIMEOUT) == nil {
-		clog.Error("NOCAN_SYS_NODE_BOOT_ACK failed for node %d", node)
+		err := fmt.Errorf("NOCAN_SYS_NODE_BOOT_ACK failed for node %d", node)
+		state.UpdateStatus(model.JobFailed, err)
+		clog.Error(err.Error())
 		return false
 	}
 
@@ -229,7 +244,9 @@ func (nfc *NodeFirmwareController) UploadFirmware(node model.Node, memtype byte,
 			data[3] = byte(base_address & 0xFF)
 			port.SendSystemMessage(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS, memtype, data[:4])
 			if port.WaitForSystemMessage(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS_ACK, model.DEFAULT_TIMEOUT) == nil {
-				clog.Error("NOCAN_SYS_BOOTLOADER_SET_ADDRESS failed for node %d at address=0x%x", node, address)
+				err := fmt.Errorf("NOCAN_SYS_BOOTLOADER_SET_ADDRESS failed for node %d at address=0x%x", node, address)
+				state.UpdateStatus(model.JobFailed, err)
+				clog.Error(err.Error())
 				return false
 			}
 
@@ -238,29 +255,37 @@ func (nfc *NodeFirmwareController) UploadFirmware(node model.Node, memtype byte,
 				port.SendSystemMessage(node, NOCAN_SYS_BOOTLOADER_WRITE, 0, data[:rlen])
 				response := port.WaitForSystemMessage(node, NOCAN_SYS_BOOTLOADER_WRITE_ACK, model.DEFAULT_TIMEOUT)
 				if response == nil {
-					clog.Error("NOCAN_SYS_BOOTLOADER_WRITE failed for node %d at address=0x%x", node, address)
+					err := fmt.Errorf("NOCAN_SYS_BOOTLOADER_WRITE failed for node %d at address=0x%x", node, address)
+					state.UpdateStatus(model.JobFailed, err)
+					clog.Error(err.Error())
 					return false
 				}
 			}
 			port.SendSystemMessage(node, NOCAN_SYS_BOOTLOADER_WRITE, 1, nil)
 			response := port.WaitForSystemMessage(node, NOCAN_SYS_BOOTLOADER_WRITE_ACK, model.DEFAULT_TIMEOUT)
 			if response == nil {
-				clog.Error("Final NOCAN_SYS_BOOTLOADER_WRITE failed for node %d at address=0x%x", node, address)
+				err := fmt.Errorf("Final NOCAN_SYS_BOOTLOADER_WRITE failed for node %d at address=0x%x", node, address)
+				state.UpdateStatus(model.JobFailed, err)
+				clog.Error(err.Error())
 				return false
 			}
+
+			state.UpdateProgress(uint((page_offset * 100) / blocksize))
 		}
 	}
+	state.UpdateProgress(100)
+	state.UpdateStatus(model.JobCompleted, nil)
 	return true
 }
 
 func (nfc *NodeFirmwareController) GetFirmwareNodeAndType(w http.ResponseWriter, r *http.Request, params httprouter.Params) (model.Node, byte, bool) {
-	node, ok := nfc.ParentController.GetNode(params.ByName("node"))
+	node, ok := nfc.Application.Nodes.GetNode(params.ByName("node"))
 	if !ok {
-		LogHttpError(w, "Node does not exist", http.StatusNotFound)
+		view.LogHttpError(w, "Node does not exist", http.StatusNotFound)
 		return 0, 0, false
 	}
 	if node == 0 {
-		LogHttpError(w, "Node 0 firmware cannot be accessed", http.StatusNotFound)
+		view.LogHttpError(w, "Node 0 firmware cannot be accessed", http.StatusNotFound)
 		return 0, 0, false
 	}
 
@@ -271,7 +296,7 @@ func (nfc *NodeFirmwareController) GetFirmwareNodeAndType(w http.ResponseWriter,
 		fwtype = 'E'
 	} else {
 		// should never get here
-		LogHttpError(w, "Not found", http.StatusNotFound)
+		view.LogHttpError(w, "Not found", http.StatusNotFound)
 		return 0, 0, false
 	}
 	return node, fwtype, true
@@ -294,32 +319,31 @@ func (nfc *NodeFirmwareController) Show(w http.ResponseWriter, r *http.Request, 
 	} else {
 		fwsize64, err := strconv.ParseUint(fwsize_string, 10, 32)
 		if err != nil {
-			LogHttpError(w, "Incorrect size parameter", http.StatusBadRequest)
+			view.LogHttpError(w, "Incorrect size parameter", http.StatusBadRequest)
 			return
 		}
 		if fwtype == 'F' && fwsize64 > 0x7000 {
-			LogHttpError(w, "Flash size cannot exceed 28672 bytes (the following 4K above this limit is used by the bootloader)", http.StatusBadRequest)
+			view.LogHttpError(w, "Flash size cannot exceed 28672 bytes (the following 4K above this limit is used by the bootloader)", http.StatusBadRequest)
 		}
 		if fwtype == 'E' && fwsize64 > 0x400 {
-			LogHttpError(w, "Eeprom size cannot exceed 1024 bytes", http.StatusBadRequest)
+			view.LogHttpError(w, "Eeprom size cannot exceed 1024 bytes", http.StatusBadRequest)
 			return
 		}
 		fwsize = uint32(fwsize64)
 	}
 
 	if !atomic.CompareAndSwapInt32(&nfc.Inprogress, 0, 1) {
-		LogHttpError(w, "Firmware upload or download already in progress", http.StatusConflict)
+		view.LogHttpError(w, "Firmware upload or download already in progress", http.StatusConflict)
 		return
 	}
 	defer atomic.StoreInt32(&nfc.Inprogress, 0)
-	//LogHttpError(w, "Flash download is not implemeneted yet", http.StatusNotImplemented)
+	//view.LogHttpError(w, "Flash download is not implemeneted yet", http.StatusNotImplemented)
 
-	if flash := nfc.DownloadFirmware(node, fwtype, fwsize); flash != nil {
-		clog.Info("Successfully downloaded firmware")
-		flash.Save(w)
-	} else {
-		LogHttpError(w, "Failed to download firmware", http.StatusServiceUnavailable)
-	}
+	jobid := nfc.Application.Jobs.Model.CreateJob(func(state *model.JobState) {
+		nfc.DownloadFirmware(state, node, fwtype, fwsize)
+	})
+
+	http.Redirect(w, r, fmt.Sprintf("/api/jobs/%d", jobid), http.StatusSeeOther)
 }
 
 func (nfc *NodeFirmwareController) Create(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -331,26 +355,28 @@ func (nfc *NodeFirmwareController) Create(w http.ResponseWriter, r *http.Request
 	r.ParseMultipartForm(1 << 20)
 	file, header, err := r.FormFile("firmware")
 	if err != nil {
-		LogHttpError(w, "Bad request: "+err.Error(), http.StatusBadRequest)
+		view.LogHttpError(w, "Bad request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
 	ihex := intelhex.New()
 	if err := ihex.Load(file); err != nil {
-		LogHttpError(w, "Failed to parse firmware: "+err.Error(), http.StatusBadRequest)
+		view.LogHttpError(w, "Failed to parse firmware: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	clog.Debug("Uploaded firmware '%s' is %d bytes", header.Filename, ihex.Size)
 
 	if !atomic.CompareAndSwapInt32(&nfc.Inprogress, 0, 1) {
-		LogHttpError(w, "Firmware upload or download already in progress\n", http.StatusConflict)
+		view.LogHttpError(w, "Firmware upload or download already in progress\n", http.StatusConflict)
 		return
 	}
 	defer atomic.StoreInt32(&nfc.Inprogress, 0)
 
-	if nfc.UploadFirmware(node, fwtype, ihex) {
-		fmt.Fprintf(w, "Successfully uploaded firmware of type '%c' to node %d\n", fwtype, node)
-	}
+	jobid := nfc.Application.Jobs.Model.CreateJob(func(state *model.JobState) {
+		nfc.UploadFirmware(state, node, fwtype, ihex)
+	})
+
+	http.Redirect(w, r, fmt.Sprintf("/api/jobs/%d", jobid), http.StatusSeeOther)
 }

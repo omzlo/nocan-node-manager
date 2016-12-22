@@ -1,4 +1,4 @@
-package nocan
+package view
 
 import (
 	"encoding/json"

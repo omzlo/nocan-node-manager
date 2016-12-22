@@ -2,16 +2,17 @@ package nocan
 
 import (
 	"pannetrat.com/nocan/clog"
+	"pannetrat.com/nocan/controller"
 	"pannetrat.com/nocan/model"
 )
 
 type LogTask struct {
-	Port *model.Port
+	Application *controller.Application
+	Port        *model.Port
 }
 
-func NewLogTask(pm *model.PortManager) *LogTask {
-	task := &LogTask{}
-	task.Port = pm.CreatePort("log")
+func NewLogTask(app *controller.Application) *LogTask {
+	task := &LogTask{Application: app, Port: app.PortManager.CreatePort("log")}
 	return task
 }
 

@@ -1,9 +1,10 @@
-package nocan
+package controller
 
 import (
 	"github.com/eknkc/amber"
 	"github.com/julienschmidt/httprouter"
 	"net/http"
+	"pannetrat.com/nocan/view"
 )
 
 type HomePageController struct {
@@ -16,11 +17,11 @@ func NewHomePageController() *HomePageController {
 func (hc *HomePageController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	tpl, err := amber.CompileFile("../templates/main.amber", amber.Options{true, false})
 	if err != nil {
-		LogHttpError(w, err.Error(), http.StatusInternalServerError)
+		view.LogHttpError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if err := tpl.Execute(w, map[string]string{"Msg": "Hello Ace"}); err != nil {
-		LogHttpError(w, err.Error(), http.StatusInternalServerError)
+		view.LogHttpError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }

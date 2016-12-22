@@ -1,4 +1,4 @@
-package nocan
+package controller
 
 const (
 	NOCAN_SYS_ANY                   = 0

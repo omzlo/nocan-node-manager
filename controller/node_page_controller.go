@@ -1,14 +1,13 @@
-package nocan
+package controller
 
 import (
 	"encoding/json"
 	"fmt"
-	//"github.com/eknkc/amber"
 	"github.com/julienschmidt/httprouter"
 	"github.com/yosssi/ace"
 	"net/http"
-	//"pannetrat.com/nocan/clog"
 	"pannetrat.com/nocan/model"
+	"pannetrat.com/nocan/view"
 )
 
 type NodePageController struct {
@@ -37,13 +36,13 @@ func (nc *NodePageController) Index(w http.ResponseWriter, r *http.Request, _ ht
 
 	tpl, err := ace.Load("base", "nodes", &ace.Options{BaseDir: "../templates", Indent: "  ", DynamicReload: true})
 	if err != nil {
-		LogHttpError(w, err.Error(), http.StatusInternalServerError)
+		view.LogHttpError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	var nodearray []int
 	if err := GetJson(r, "/api/nodes", &nodearray); err != nil {
-		LogHttpError(w, err.Error(), http.StatusInternalServerError)
+		view.LogHttpError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -53,14 +52,14 @@ func (nc *NodePageController) Index(w http.ResponseWriter, r *http.Request, _ ht
 		if k > 0 {
 			err := GetJson(r, fmt.Sprintf("/api/nodes/%d", v), &nodes[k-1])
 			if err != nil {
-				LogHttpError(w, err.Error(), http.StatusInternalServerError)
+				view.LogHttpError(w, err.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
 	}
 
 	if err := tpl.Execute(w, map[string]interface{}{"Nodes": nodes}); err != nil {
-		LogHttpError(w, err.Error(), http.StatusInternalServerError)
+		view.LogHttpError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
