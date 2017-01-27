@@ -231,7 +231,7 @@ func (ds *Driver) ProcessFrames(port *Port) {
 					ds.PowerStatus.PowerOn = ((frame.CanData[0] & POWER_FLAGS_SUPPLY) != 0)
 					ds.PowerStatus.SenseOn = ((frame.CanData[0] & POWER_FLAGS_SENSE) != 0)
 					ds.PowerStatus.Fault = ((frame.CanData[0] & POWER_FLAGS_FAULT) != 0)
-					ds.PowerStatus.PowerLevel = float32(powerlevel) / float32(usbref) * 1.1 * 9.2
+					ds.PowerStatus.PowerLevel = float32(powerlevel) / float32(usbref) * 1.1 * 7.2
 					ds.PowerStatus.SenseLevel = 100 * float32(senselevel) / 1023
 					ds.PowerStatus.UsbReference = 1023 * 1.1 / float32(usbref)
 					errLevel := clog.INFO

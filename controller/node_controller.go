@@ -32,13 +32,19 @@ func NewNodeController(app *Application, nodeinfo string) *NodeController {
 }
 
 func (nc *NodeController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	var res []model.Node
+	var res []model.Node = make([]model.Node, 0)
 
 	nc.Model.Each(func(n model.Node, _ *model.NodeState, _ interface{}) {
 		res = append(res, n)
 	}, nil)
 
-	view.RenderJSON(w, res)
+	context := view.NewContext(r, res)
+
+	if AcceptJSON(r) {
+		view.RenderJSON(w, context)
+	} else {
+		view.RenderAceTemplate(w, "base", "node_index", context)
+	}
 }
 
 func (nc *NodeController) GetNode(nodeName string) (model.Node, bool) {
@@ -72,7 +78,13 @@ func (nc *NodeController) Show(w http.ResponseWriter, r *http.Request, params ht
 		return
 	}
 
-	view.RenderJSON(w, props)
+	context := view.NewContext(r, props)
+
+	if AcceptJSON(r) {
+		view.RenderJSON(w, context)
+	} else {
+		view.RenderAceTemplate(w, "base", "node_show", context)
+	}
 }
 
 func (nc *NodeController) Update(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -91,6 +103,8 @@ func (nc *NodeController) Update(w http.ResponseWriter, r *http.Request, params 
 
 	port := nc.Application.PortManager.CreatePort("update-node")
 	defer nc.Application.PortManager.DestroyPort(port)
+
+	/* TODO: add JSON/HTTP processing */
 
 	switch r.Form.Get("c") {
 	case "reboot":
@@ -273,6 +287,7 @@ func (nfc *NodeFirmwareController) UploadFirmware(state *model.JobState, node mo
 			state.UpdateProgress(uint((page_offset * 100) / blocksize))
 		}
 	}
+	state.Result = []byte("Uploaded")
 	state.UpdateProgress(100)
 	state.UpdateStatus(model.JobCompleted, nil)
 	return true

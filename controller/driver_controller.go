@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"github.com/julienschmidt/httprouter"
 	"net/http"
 	"pannetrat.com/nocan/model"
@@ -33,7 +34,14 @@ func (dc *DriverController) Index(w http.ResponseWriter, r *http.Request, _ http
 		res = append(res, int(i))
 	}
 
-	view.RenderJSON(w, res)
+	context := view.NewContext(r, res)
+
+	switch {
+	case AcceptJSON(r):
+		view.RenderJSON(w, context)
+	default:
+		view.RenderAceTemplate(w, "base", "driver_index", context)
+	}
 }
 
 func (dc *DriverController) Show(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -42,7 +50,15 @@ func (dc *DriverController) Show(w http.ResponseWriter, r *http.Request, params 
 		view.LogHttpError(w, "Driver does not exist", http.StatusNotFound)
 		return
 	}
-	view.RenderJSON(w, driver)
+
+	context := view.NewContext(r, driver)
+
+	switch {
+	case AcceptJSON(r):
+		view.RenderJSON(w, context)
+	default:
+		view.RenderAceTemplate(w, "base", "driver_show", context)
+	}
 }
 
 func (dc *DriverController) Update(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -73,6 +89,14 @@ func (dc *DriverController) Update(w http.ResponseWriter, r *http.Request, param
 
 	if success := <-req.C; success != model.SERIAL_CAN_REQUEST_STATUS_SUCCESS {
 		view.LogHttpError(w, "Command failed", http.StatusInternalServerError)
+	}
+	switch {
+	case AcceptJSON(r):
+		view.RenderJSON(w, view.NewContext(r, "success"))
+	default:
+		context := view.NewContext(r, nil)
+		context.AddFlashItem("notice", "update executed with success")
+		view.RedirectTo(w, r, fmt.Sprintf("/api/drivers/%d", driver.DriverId), context)
 	}
 }
 

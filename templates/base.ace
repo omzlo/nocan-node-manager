@@ -1,13 +1,26 @@
 = doctype html 
 html lang=en
   head
-    title Missing 
+    {{with .MetaData.Title}}
+      title .
+    {{else}}
+      title NoCan control center
+    {{end}}
     link href="/static/skeleton/css/skeleton.css" rel="stylesheet" type="text/css"
     link href="/static/font-awesome/css/font-awesome.min.css" rel="stylesheet" type="text/css"
     link href="/static/css/main.css" rel="stylesheet" type="text/css"
     script src="/static/jquery/jquery-3.1.1.min.js" type="text/javascript"
     script src="/static/javascript/main.js" type="text/javascript"
   body
+    div.container
+      a href="/"
+        i.fa.fa-home
+    div.container
+      {{with .MetaData}}
+        {{range .notice}}
+           div.notice {{ . }}
+        {{end}}
+      {{end}}
     = yield main
       | No content available
     div.container

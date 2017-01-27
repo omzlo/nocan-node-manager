@@ -1,0 +1,10 @@
+= content main
+  .container
+    h1 Value
+    p
+      | Value: 
+      b {{.Content}}
+    form.form method="POST"
+      input type="hidden" name="_method" value="PUT"
+      input type="text" name="value" value="{{ .Content }}"
+      input.button-primary type="submit" value="change"

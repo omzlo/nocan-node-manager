@@ -1,0 +1,9 @@
+= content main
+  div.container
+    h1 Topics
+    div#nodes
+      {{range .Content}}
+        a.button.button-primary.u-full-width href="/api/topics/{{.}}" &lt;{{.}}&gt;
+      {{else}}
+        p There are no nodes detected as connected. Perhaps you need to power the line off and on?  
+      {{end}}

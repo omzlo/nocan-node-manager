@@ -70,6 +70,10 @@ func (canid CanId) IsSystem() bool {
 	return (canid & CANID_MASK_SYSTEM) != 0
 }
 
+func (canid CanId) IsPublish() bool {
+	return !canid.IsSystem() && !canid.IsControl()
+}
+
 func (canid CanId) GetNode() Node {
 	return Node((canid >> 21) & 0x7F)
 }

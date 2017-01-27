@@ -1,0 +1,42 @@
+= content main
+  div.container
+    h1 Driver {{.Content.DeviceName}}
+    div#driver
+      div.widget
+        div.widget-item
+          b Driver {{.Content.DeviceName}}
+        div.widget-item 
+          b Power Statistics:  
+          ul
+            li 
+              b DC Power On: 
+              {{.Content.PowerStatus.PowerOn}}
+            li 
+              b DC Power Voltage: 
+              {{.Content.PowerStatus.PowerLevel}}
+            li 
+              b Bus Power On: 
+              {{.Content.PowerStatus.SenseOn}}
+            li 
+              b Bus Power Level: 
+              {{.Content.PowerStatus.SenseLevel}} 
+            li 
+              b USB Reference Voltage: 
+              {{.Content.PowerStatus.UsbReference }}
+            li 
+              b Fault: 
+              {{.Content.PowerStatus.Fault }}
+        div.widget-item
+          .row
+            div class="four columns"
+              a.button href={{.MetaData.self_url}} Update
+            div class="four columns"
+              form method="POST"
+                input type="hidden" name="c" value="poweroff"
+                input type="hidden" name="_method" value="PUT"
+                input type="submit" value="Power Off"
+            div class="four columns"
+              form method="POST"
+                input type="hidden" name="c" value="poweron"
+                input type="hidden" name="_method" value="PUT"
+                input type="submit" value="Power On"

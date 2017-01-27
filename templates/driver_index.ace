@@ -1,0 +1,9 @@
+= content main
+  div.container
+    h1 Topics
+    div#nodes
+      {{range .Content}}
+        a.button.button-primary.u-full-width href="/api/drivers/{{.}}" Driver {{.}}
+      {{else}}
+        p There are no drivers connected.  
+      {{end}}

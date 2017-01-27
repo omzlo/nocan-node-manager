@@ -1,9 +1,0 @@
-extends _page
-
-block content
-    div.container
-        h1 NoCan Dashboard
-        a.button.button-primary.u-full-width[href="/nodes"] Nodes
-        a.button.button-primary.u-full-width[href="/topics"] Topics
-        a.button.button-primary.u-full-width[href="/ports"] Ports
-

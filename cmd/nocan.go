@@ -72,7 +72,6 @@ func main() {
 	}
 
 	homepage := controller.NewHomePageController()
-	nodepage := controller.NewNodePageController()
 
 	main.Router.GET("/api/topics", main.Topics.Index)
 	main.Router.GET("/api/topics/*topic", main.Topics.Show)
@@ -90,7 +89,7 @@ func main() {
 	main.Router.GET("/api/jobs/:id", main.Jobs.Show)
 	//main.Router.GET("/api/ports", main.Ports.Index)
 	main.Router.ServeFiles("/static/*filepath", http.Dir("../static"))
-	main.Router.GET("/nodes", nodepage.Index)
+	//main.Router.GET("/nodes", nodepage.Index)
 	main.Router.GET("/", homepage.Index)
 
 	main.Run()

@@ -56,7 +56,6 @@ func (jc *JobController) Show(w http.ResponseWriter, r *http.Request, params htt
 	case model.JobFailed:
 		view.LogHttpError(w, fmt.Sprintf("Job %d failed, %s", jobId, job.FailureReason.Error()), http.StatusServiceUnavailable)
 		jc.Model.FinalizeJob(jobId)
-
 	}
 }
 
