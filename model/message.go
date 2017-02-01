@@ -69,8 +69,8 @@ func NewSystemMessage(node Node, fn uint8, param uint8, value []byte) *Message {
 	return NewMessage(id, value)
 }
 
-func NewPublishMessage(node Node, topic Topic, value []byte) *Message {
-	id := CanId(0).SetNode(node).SetTopic(topic)
+func NewPublishMessage(node Node, channel Channel, value []byte) *Message {
+	id := CanId(0).SetNode(node).SetChannel(channel)
 	return NewMessage(id, value)
 }
 

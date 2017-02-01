@@ -104,19 +104,19 @@ func (canid CanId) SetSysParam(pm uint8) CanId {
 	return canid
 }
 
-func (canid CanId) GetTopic() Topic {
+func (canid CanId) GetChannel() Channel {
 	var i uint8
 	var base uint8 = uint8(((canid >> 16) & 0x03) << 4)
 	for i = 0; i < 16; i++ {
 		if (canid & (1 << i)) != 0 {
-			return Topic(base + i)
+			return Channel(base + i)
 		}
 	}
 	return -1
 }
 
-func (canid CanId) SetTopic(topic Topic) CanId {
-	t := ((uint32(topic) >> 4) << 16) | (1 << (uint32(topic) & 0xF))
+func (canid CanId) SetChannel(channel Channel) CanId {
+	t := ((uint32(channel) >> 4) << 16) | (1 << (uint32(channel) & 0xF))
 	canid &= CanId(0xFFFC0000)
 	canid |= CanId(t)
 	return canid
@@ -135,7 +135,7 @@ func (canid CanId) String() string {
 	} else if canid.IsSystem() {
 		s += fmt.Sprintf(",sys,fn=%d,pm=%d", canid.GetSysFunc(), canid.GetSysParam())
 	} else {
-		s += fmt.Sprintf(",pub,topic=%d", canid.GetTopic())
+		s += fmt.Sprintf(",pub,channel=%d", canid.GetChannel())
 	}
 	return s + ">"
 }
@@ -151,14 +151,14 @@ var sys_func_strings = [...]string{
 	"NOCAN_SYS_NODE_BOOT_ACK",
 	"NOCAN_SYS_NODE_PING",
 	"NOCAN_SYS_NODE_PING_ACK",
-	"NOCAN_SYS_TOPIC_REGISTER",
-	"NOCAN_SYS_TOPIC_REGISTER_ACK",
-	"NOCAN_SYS_TOPIC_UNREGISTER",
-	"NOCAN_SYS_TOPIC_UNREGISTER_ACK",
-	"NOCAN_SYS_TOPIC_SUBSCRIBE",
-	"NOCAN_SYS_TOPIC_UNSUBSCRIBE",
-	"NOCAN_SYS_TOPIC_LOOKUP",
-	"NOCAN_SYS_TOPIC_LOOKUP_ACK",
+	"NOCAN_SYS_CHANNEL_REGISTER",
+	"NOCAN_SYS_CHANNEL_REGISTER_ACK",
+	"NOCAN_SYS_CHANNEL_UNREGISTER",
+	"NOCAN_SYS_CHANNEL_UNREGISTER_ACK",
+	"NOCAN_SYS_CHANNEL_SUBSCRIBE",
+	"NOCAN_SYS_CHANNEL_UNSUBSCRIBE",
+	"NOCAN_SYS_CHANNEL_LOOKUP",
+	"NOCAN_SYS_CHANNEL_LOOKUP_ACK",
 	"NOCAN_SYS_BOOTLOADER_GET_SIGNATURE",
 	"NOCAN_SYS_BOOTLOADER_GET_SIGNATURE_ACK",
 	"NOCAN_SYS_BOOTLOADER_SET_ADDRESS",

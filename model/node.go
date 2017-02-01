@@ -245,8 +245,8 @@ func (nm *NodeModel) Unregister(node Node) bool {
 	return true
 }
 
-func (nm *NodeModel) Subscribe(node Node, topic_bitmap []byte) bool {
-	if len(topic_bitmap) != 8 {
+func (nm *NodeModel) Subscribe(node Node, channel_bitmap []byte) bool {
+	if len(channel_bitmap) != 8 {
 		return false
 	}
 
@@ -254,14 +254,14 @@ func (nm *NodeModel) Subscribe(node Node, topic_bitmap []byte) bool {
 	defer nm.Mutex.Unlock()
 
 	if ns := nm.getState(node); ns != nil {
-		bitmap.Bitmap64Add(ns.Subscriptions[:], topic_bitmap)
+		bitmap.Bitmap64Add(ns.Subscriptions[:], channel_bitmap)
 		return true
 	}
 	return false
 }
 
-func (nm *NodeModel) Unsubscribe(node Node, topic_bitmap []byte) bool {
-	if len(topic_bitmap) != 8 {
+func (nm *NodeModel) Unsubscribe(node Node, channel_bitmap []byte) bool {
+	if len(channel_bitmap) != 8 {
 		return false
 	}
 
@@ -269,7 +269,7 @@ func (nm *NodeModel) Unsubscribe(node Node, topic_bitmap []byte) bool {
 	defer nm.Mutex.Unlock()
 
 	if ns := nm.getState(node); ns != nil {
-		bitmap.Bitmap64Sub(ns.Subscriptions[:], topic_bitmap)
+		bitmap.Bitmap64Sub(ns.Subscriptions[:], channel_bitmap)
 		return true
 	}
 	return false

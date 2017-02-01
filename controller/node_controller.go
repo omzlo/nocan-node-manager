@@ -148,17 +148,17 @@ func (nc *NodeController) Run() {
 				node_id, _ := nc.Model.Lookup(m.Data)
 				msg := model.NewSystemMessage(m.Id.GetNode(), NOCAN_SYS_ADDRESS_LOOKUP_ACK, uint8(node_id), m.Data)
 				nc.Port.SendMessage(msg)
-			case NOCAN_SYS_TOPIC_SUBSCRIBE:
+			case NOCAN_SYS_CHANNEL_SUBSCRIBE:
 				if nc.Model.Subscribe(m.Id.GetNode(), m.Data) {
-					clog.Info("NOCAN_SYS_TOPIC_SUBSCRIBE: Node %d successfully subscribed to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
+					clog.Info("NOCAN_SYS_CHANNEL_SUBSCRIBE: Node %d successfully subscribed to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
 				} else {
-					clog.Warning("NOCAN_SYS_TOPIC_SUBSCRIBE: Node %d failed to subscribe to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
+					clog.Warning("NOCAN_SYS_CHANNEL_SUBSCRIBE: Node %d failed to subscribe to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
 				}
-			case NOCAN_SYS_TOPIC_UNSUBSCRIBE:
+			case NOCAN_SYS_CHANNEL_UNSUBSCRIBE:
 				if nc.Model.Unsubscribe(m.Id.GetNode(), m.Data) {
-					clog.Info("NOCAN_SYS_TOPIC_UNSUBSCRIBE: Node %d successfully unsubscribed to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
+					clog.Info("NOCAN_SYS_CHANNEL_UNSUBSCRIBE: Node %d successfully unsubscribed to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
 				} else {
-					clog.Warning("NOCAN_SYS_TOPIC_UNSUBSCRIBE: Node %d failed to unsubscribe to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
+					clog.Warning("NOCAN_SYS_CHANNEL_UNSUBSCRIBE: Node %d failed to unsubscribe to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
 				}
 			}
 		}

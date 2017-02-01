@@ -80,8 +80,8 @@ func (port *Port) WaitForSystemMessage(node Node, fn uint8, timeout time.Duratio
 	}
 }
 
-func (port *Port) Publish(node Node, topic Topic, data []byte) {
-	m := NewPublishMessage(node, topic, data)
+func (port *Port) Publish(node Node, channel Channel, data []byte) {
+	m := NewPublishMessage(node, channel, data)
 	clog.Debug("Publish %s", m.String())
 	port.SendMessage(m)
 }

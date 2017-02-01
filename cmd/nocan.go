@@ -27,14 +27,14 @@ func (d *multiString) Set(value string) error {
 
 var (
 	optDeviceStrings multiString
-	optTopics        multiString
+	optChannels      multiString
 	optLogTask       bool
 )
 
 func init() {
 	flag.Var(&optDeviceStrings, "interface", "Interface to connect to (may be repeated)")
 	flag.BoolVar(&optLogTask, "log-task", false, "Add a logging task (helps debug)")
-	flag.Var(&optTopics, "topic", "Register a topic (may be repeated)")
+	flag.Var(&optChannels, "channel", "Register a channel (may be repeated)")
 }
 
 func main() {
@@ -60,8 +60,8 @@ func main() {
 		clog.Warning("No interface was specified! Not much to do here.")
 	}
 
-	for _, itr := range optTopics {
-		main.Topics.Model.Register(itr)
+	for _, itr := range optChannels {
+		main.Channels.Model.Register(itr)
 	}
 
 	if optLogTask {
@@ -73,9 +73,9 @@ func main() {
 
 	homepage := controller.NewHomePageController()
 
-	main.Router.GET("/api/topics", main.Topics.Index)
-	main.Router.GET("/api/topics/*topic", main.Topics.Show)
-	main.Router.PUT("/api/topics/*topic", main.Topics.Update)
+	main.Router.GET("/api/channels", main.Channels.Index)
+	main.Router.GET("/api/channels/*channel", main.Channels.Show)
+	main.Router.PUT("/api/channels/*channel", main.Channels.Update)
 	main.Router.GET("/api/nodes", main.Nodes.Index)
 	main.Router.GET("/api/nodes/:node", main.Nodes.Show)
 	main.Router.PUT("/api/nodes/:node", main.Nodes.Update)
