@@ -9,16 +9,16 @@ import (
 )
 
 const (
-	DRIVER_POWER_OFF = 0
-	DRIVER_POWER_ON  = 1
+	INTERFACE_POWER_OFF = 0
+	INTERFACE_POWER_ON  = 1
 )
 
 var (
-	DriverBusyError         = errors.New("Driver is busy, try again later")
-	DriverDisconnectedError = errors.New("Driver is disconnected")
-	DriverInputError        = errors.New("Driver input error")
-	DriverTimeoutError      = errors.New("Operation timed out")
-	DriverOperationError    = errors.New("Operation failed")
+	InterfaceBusyError         = errors.New("Interface is busy, try again later")
+	InterfaceDisconnectedError = errors.New("Interface is disconnected")
+	InterfaceInputError        = errors.New("Interface input error")
+	InterfaceTimeoutError      = errors.New("Operation timed out")
+	InterfaceOperationError    = errors.New("Operation failed")
 )
 
 type SerialCanRequest struct {
@@ -46,10 +46,10 @@ const (
 	POWER_FLAGS_FAULT  = 4
 )
 
-type DriverId uint8
+type InterfaceId uint8
 
-type Driver struct {
-	DriverId      `json:"id"`
+type Interface struct {
+	InterfaceId   `json:"id"`
 	Access        sync.Mutex          `json:"-"`
 	Serial        *SerialCan          `json:"-"`
 	DeviceName    string              `json:"device_name"`
@@ -67,7 +67,7 @@ type Driver struct {
 	Connected bool `json:"connected"`
 }
 
-func NewDriver(deviceName string) (*Driver, error) {
+func NewInterface(deviceName string) (*Interface, error) {
 	serial, err := SerialCanOpen(deviceName)
 	if err != nil {
 		clog.Error("Could not open %s: %s", deviceName, err.Error())
@@ -75,7 +75,7 @@ func NewDriver(deviceName string) (*Driver, error) {
 	}
 	//clog.Debug("Opened device %s", deviceName)
 
-	driver := &Driver{Serial: serial, DeviceName: deviceName, Connected: true}
+	driver := &Interface{Serial: serial, DeviceName: deviceName, Connected: true}
 
 	if err = driver.Reset(); err != nil {
 		clog.Error(err.Error())
@@ -85,7 +85,7 @@ func NewDriver(deviceName string) (*Driver, error) {
 	return driver, nil
 }
 
-func (ds *Driver) Reset() error {
+func (ds *Interface) Reset() error {
 	var frame CanFrame
 
 	frame.CanId = CanId(CANID_MASK_CONTROL).SetSysFunc(SERIAL_CAN_CTRL_RESET).SetSysParam(0)
@@ -112,7 +112,7 @@ func (ds *Driver) Reset() error {
 	return err
 }
 
-func (ds *Driver) Rescue() bool {
+func (ds *Interface) Rescue() bool {
 	ds.Close()
 	for {
 		serial, err := SerialCanOpen(ds.DeviceName)
@@ -132,11 +132,11 @@ func (ds *Driver) Rescue() bool {
 	}
 }
 
-func (ds *Driver) Close() {
+func (ds *Interface) Close() {
 	ds.Serial.Close()
 }
 
-func (ds *Driver) finalizeAction(action uint8, result uint8) {
+func (ds *Interface) finalizeAction(action uint8, result uint8) {
 	ds.RequestStatus[action].C <- result
 
 	ds.Access.Lock()
@@ -144,16 +144,16 @@ func (ds *Driver) finalizeAction(action uint8, result uint8) {
 	ds.Access.Unlock()
 }
 
-func (ds *Driver) performAction(action uint8, param uint8, data []byte) (*SerialCanRequest, error) {
+func (ds *Interface) performAction(action uint8, param uint8, data []byte) (*SerialCanRequest, error) {
 	ds.Access.Lock()
 	defer ds.Access.Unlock()
 
 	if !ds.Connected {
-		return nil, DriverDisconnectedError
+		return nil, InterfaceDisconnectedError
 	}
 
 	if ds.RequestStatus[action].Submitted {
-		return nil, DriverBusyError
+		return nil, InterfaceBusyError
 	}
 
 	ds.RequestStatus[action].Submitted = true
@@ -177,21 +177,21 @@ func (ds *Driver) performAction(action uint8, param uint8, data []byte) (*Serial
 	return &ds.RequestStatus[action], nil
 }
 
-func (ds *Driver) SendSetPower(power uint8) (*SerialCanRequest, error) {
+func (ds *Interface) SendSetPower(power uint8) (*SerialCanRequest, error) {
 	return ds.performAction(SERIAL_CAN_CTRL_SET_POWER, power, nil)
 }
 
-func (ds *Driver) SendUpdatePowerStatus() (*SerialCanRequest, error) {
+func (ds *Interface) SendUpdatePowerStatus() (*SerialCanRequest, error) {
 	return ds.performAction(SERIAL_CAN_CTRL_GET_POWER_STATUS, 0, nil)
 }
 
 /*
-func (ds *Driver) SendReset() (*SerialCanRequest, error) {
+func (ds *Interface) SendReset() (*SerialCanRequest, error) {
 	return ds.performAction(SERIAL_CAN_CTRL_RESET, 0, nil)
 }
 */
 
-func (ds *Driver) ProcessFrames(port *Port) {
+func (ds *Interface) ProcessFrames(port *Port) {
 	for {
 		var frame CanFrame
 
@@ -271,7 +271,7 @@ func (ds *Driver) ProcessFrames(port *Port) {
 	}
 }
 
-func (ds *Driver) ProcessMessages(port *Port) {
+func (ds *Interface) ProcessMessages(port *Port) {
 	ticker := time.NewTicker(10 * time.Second)
 
 	for {
@@ -307,33 +307,33 @@ func (ds *Driver) ProcessMessages(port *Port) {
 	}
 }
 
-func (ds *Driver) Run(port *Port) {
+func (ds *Interface) Run(port *Port) {
 	go ds.ProcessFrames(port)
 	ds.SendUpdatePowerStatus()
 	ds.ProcessMessages(port)
 }
 
-type DriverModel struct {
-	Drivers []*Driver
+type InterfaceModel struct {
+	Interfaces []*Interface
 }
 
-func NewDriverModel() *DriverModel {
-	return &DriverModel{Drivers: make([]*Driver, 0, 2)}
+func NewInterfaceModel() *InterfaceModel {
+	return &InterfaceModel{Interfaces: make([]*Interface, 0, 2)}
 }
 
-func (dm *DriverModel) Add(dr *Driver) {
-	dm.Drivers = append(dm.Drivers, dr)
+func (dm *InterfaceModel) Add(dr *Interface) {
+	dm.Interfaces = append(dm.Interfaces, dr)
 }
 
-func (dm *DriverModel) GetDriver(id DriverId) *Driver {
-	if int(id) >= len(dm.Drivers) {
+func (dm *InterfaceModel) GetInterface(id InterfaceId) *Interface {
+	if int(id) >= len(dm.Interfaces) {
 		return nil
 	}
-	return dm.Drivers[id]
+	return dm.Interfaces[id]
 }
 
-func (dm *DriverModel) Run(port *Port) {
-	for _, driver := range dm.Drivers {
+func (dm *InterfaceModel) Run(port *Port) {
+	for _, driver := range dm.Interfaces {
 		go driver.Run(port)
 	}
 }

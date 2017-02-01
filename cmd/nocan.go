@@ -38,23 +38,23 @@ func init() {
 }
 
 func main() {
-	var id [8]byte
+	//var id [8]byte
 
 	flag.Parse()
 
 	clog.Debug("Start")
 
 	main := controller.NewApplication()
-	model.StringToUdid("01:02:03:04:05:06:07:88", id[:])
-	main.Nodes.Model.Register(id[:])
+	//model.StringToUdid("01:02:03:04:05:06:07:88", id[:])
+	//main.Nodes.Model.Register(id[:])
 
 	if len(optDeviceStrings) > 0 {
 		for _, itr := range optDeviceStrings {
-			device, err := model.NewDriver(itr)
+			device, err := model.NewInterface(itr)
 			if err != nil {
 				return
 			}
-			main.Drivers.Model.Add(device)
+			main.Interfaces.Model.Add(device)
 		}
 	} else {
 		clog.Warning("No interface was specified! Not much to do here.")
@@ -83,9 +83,9 @@ func main() {
 	main.Router.POST("/api/nodes/:node/flash", main.Nodes.Firmware.Create)
 	main.Router.GET("/api/nodes/:node/eeprom", main.Nodes.Firmware.Show)
 	main.Router.POST("/api/nodes/:node/eeprom", main.Nodes.Firmware.Create)
-	main.Router.GET("/api/drivers", main.Drivers.Index)
-	main.Router.GET("/api/drivers/:driver", main.Drivers.Show)
-	main.Router.PUT("/api/drivers/:driver", main.Drivers.Update)
+	main.Router.GET("/api/interfaces", main.Interfaces.Index)
+	main.Router.GET("/api/interfaces/:interf", main.Interfaces.Show)
+	main.Router.PUT("/api/interfaces/:interf", main.Interfaces.Update)
 	main.Router.GET("/api/jobs/:id", main.Jobs.Show)
 	//main.Router.GET("/api/ports", main.Ports.Index)
 	main.Router.ServeFiles("/static/*filepath", http.Dir("../static"))

@@ -76,7 +76,7 @@ func (tc *TopicController) Update(w http.ResponseWriter, r *http.Request, params
 
 	value := []byte(r.Form.Get("value"))
 	tc.Model.SetContent(topic, value)
-	tc.Port.Publish(0, topic, value)
+	tc.Port.SendMessage(model.NewPublishMessage(0, topic, value))
 
 	if !AcceptJSON(r) {
 		context := view.NewContext(r, nil)

@@ -108,14 +108,14 @@ func (nc *NodeController) Update(w http.ResponseWriter, r *http.Request, params 
 
 	switch r.Form.Get("c") {
 	case "reboot":
-		port.SendSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil)
-		if port.WaitForSystemMessage(node, NOCAN_SYS_NODE_BOOT_ACK, model.DEFAULT_TIMEOUT) == nil {
+		port.SendMessage(model.NewSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil))
+		if port.WaitForMessage(model.NewSystemMessageFilter(node, NOCAN_SYS_NODE_BOOT_ACK), model.DEFAULT_TIMEOUT) == nil {
 			view.LogHttpError(w, "Node could not be rebooted", http.StatusServiceUnavailable)
 			return
 		}
 	case "ping":
-		port.SendSystemMessage(node, NOCAN_SYS_NODE_PING, 0, nil)
-		if port.WaitForSystemMessage(node, NOCAN_SYS_NODE_PING_ACK, model.DEFAULT_TIMEOUT) == nil {
+		port.SendMessage(model.NewSystemMessage(node, NOCAN_SYS_NODE_PING, 0, nil))
+		if port.WaitForMessage(model.NewSystemMessageFilter(node, NOCAN_SYS_NODE_PING_ACK), model.DEFAULT_TIMEOUT) == nil {
 			view.LogHttpError(w, "Node could not be pinged", http.StatusServiceUnavailable)
 			return
 		}
@@ -185,9 +185,9 @@ func (nfc *NodeFirmwareController) DownloadFirmware(state *model.JobState, node 
 	port := nfc.Application.PortManager.CreatePort("firmware-download")
 	defer nfc.Application.PortManager.DestroyPort(port)
 
-	port.SendSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil)
+	port.SendMessage(model.NewSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil))
 
-	if port.WaitForSystemMessage(node, NOCAN_SYS_NODE_BOOT_ACK, model.EXTENDED_TIMEOUT) == nil {
+	if port.WaitForMessage(model.NewSystemMessageFilter(node, NOCAN_SYS_NODE_BOOT_ACK), model.EXTENDED_TIMEOUT) == nil {
 		err := fmt.Errorf("NOCAN_SYS_NODE_BOOT_ACK failed for node %d", node)
 		state.UpdateStatus(model.JobFailed, err)
 		clog.Error(err.Error())
@@ -202,16 +202,16 @@ func (nfc *NodeFirmwareController) DownloadFirmware(state *model.JobState, node 
 		data[1] = 0
 		data[2] = byte(address >> 8)
 		data[3] = byte(address & 0xFF)
-		port.SendSystemMessage(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS, memtype, data[:4])
-		if port.WaitForSystemMessage(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS_ACK, model.DEFAULT_TIMEOUT) == nil {
+		port.SendMessage(model.NewSystemMessage(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS, memtype, data[:4]))
+		if port.WaitForMessage(model.NewSystemMessageFilter(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS_ACK), model.DEFAULT_TIMEOUT) == nil {
 			err := fmt.Errorf("NOCAN_SYS_BOOTLOADER_SET_ADDRESS failed for node %d at address=0x%x", node, address)
 			state.UpdateStatus(model.JobFailed, err)
 			clog.Error(err.Error())
 			return false
 		}
 		for pos := 0; pos < SPM_PAGE_SIZE; pos += 8 {
-			port.SendSystemMessage(node, NOCAN_SYS_BOOTLOADER_READ, 8, nil)
-			response := port.WaitForSystemMessage(node, NOCAN_SYS_BOOTLOADER_READ_ACK, model.DEFAULT_TIMEOUT)
+			port.SendMessage(model.NewSystemMessage(node, NOCAN_SYS_BOOTLOADER_READ, 8, nil))
+			response := port.WaitForMessage(model.NewSystemMessageFilter(node, NOCAN_SYS_BOOTLOADER_READ_ACK), model.DEFAULT_TIMEOUT)
 			if response == nil {
 				err := fmt.Errorf("NOCAN_SYS_BOOTLOADER_READ failed for node %d at address=0x%x", node, address)
 				state.UpdateStatus(model.JobFailed, err)
@@ -238,9 +238,9 @@ func (nfc *NodeFirmwareController) UploadFirmware(state *model.JobState, node mo
 	port := nfc.Application.PortManager.CreatePort("firmware-upload")
 	defer nfc.Application.PortManager.DestroyPort(port)
 
-	port.SendSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil)
+	port.SendMessage(model.NewSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil))
 
-	if port.WaitForSystemMessage(node, NOCAN_SYS_NODE_BOOT_ACK, model.EXTENDED_TIMEOUT) == nil {
+	if port.WaitForMessage(model.NewSystemMessageFilter(node, NOCAN_SYS_NODE_BOOT_ACK), model.EXTENDED_TIMEOUT) == nil {
 		err := fmt.Errorf("NOCAN_SYS_NODE_BOOT_ACK failed for node %d", node)
 		state.UpdateStatus(model.JobFailed, err)
 		clog.Error(err.Error())
@@ -256,8 +256,8 @@ func (nfc *NodeFirmwareController) UploadFirmware(state *model.JobState, node mo
 			data[1] = 0
 			data[2] = byte(base_address >> 8)
 			data[3] = byte(base_address & 0xFF)
-			port.SendSystemMessage(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS, memtype, data[:4])
-			if port.WaitForSystemMessage(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS_ACK, model.DEFAULT_TIMEOUT) == nil {
+			port.SendMessage(model.NewSystemMessage(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS, memtype, data[:4]))
+			if port.WaitForMessage(model.NewSystemMessageFilter(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS_ACK), model.DEFAULT_TIMEOUT) == nil {
 				err := fmt.Errorf("NOCAN_SYS_BOOTLOADER_SET_ADDRESS failed for node %d at address=0x%x", node, address)
 				state.UpdateStatus(model.JobFailed, err)
 				clog.Error(err.Error())
@@ -266,8 +266,8 @@ func (nfc *NodeFirmwareController) UploadFirmware(state *model.JobState, node mo
 
 			for page_pos := uint32(0); page_pos < SPM_PAGE_SIZE && page_offset+page_pos < blocksize; page_pos += 8 {
 				rlen := block.Copy(data[:], page_offset+page_pos, 8)
-				port.SendSystemMessage(node, NOCAN_SYS_BOOTLOADER_WRITE, 0, data[:rlen])
-				response := port.WaitForSystemMessage(node, NOCAN_SYS_BOOTLOADER_WRITE_ACK, model.DEFAULT_TIMEOUT)
+				port.SendMessage(model.NewSystemMessage(node, NOCAN_SYS_BOOTLOADER_WRITE, 0, data[:rlen]))
+				response := port.WaitForMessage(model.NewSystemMessageFilter(node, NOCAN_SYS_BOOTLOADER_WRITE_ACK), model.DEFAULT_TIMEOUT)
 				if response == nil {
 					err := fmt.Errorf("NOCAN_SYS_BOOTLOADER_WRITE failed for node %d at address=0x%x", node, address)
 					state.UpdateStatus(model.JobFailed, err)
@@ -275,8 +275,8 @@ func (nfc *NodeFirmwareController) UploadFirmware(state *model.JobState, node mo
 					return false
 				}
 			}
-			port.SendSystemMessage(node, NOCAN_SYS_BOOTLOADER_WRITE, 1, nil)
-			response := port.WaitForSystemMessage(node, NOCAN_SYS_BOOTLOADER_WRITE_ACK, model.DEFAULT_TIMEOUT)
+			port.SendMessage(model.NewSystemMessage(node, NOCAN_SYS_BOOTLOADER_WRITE, 1, nil))
+			response := port.WaitForMessage(model.NewSystemMessageFilter(node, NOCAN_SYS_BOOTLOADER_WRITE_ACK), model.DEFAULT_TIMEOUT)
 			if response == nil {
 				err := fmt.Errorf("Final NOCAN_SYS_BOOTLOADER_WRITE failed for node %d at address=0x%x", node, address)
 				state.UpdateStatus(model.JobFailed, err)

@@ -14,7 +14,7 @@ type Application struct {
 	Router      *httprouter.Router
 	Topics      *TopicController
 	Nodes       *NodeController
-	Drivers     *DriverController
+	Interfaces  *InterfaceController
 	Jobs        *JobController
 }
 
@@ -24,7 +24,7 @@ func NewApplication() *Application {
 	app.Router = httprouter.New()
 	app.Nodes = NewNodeController(app, "nodes.dat")
 	app.Topics = NewTopicController(app)
-	app.Drivers = NewDriverController(app)
+	app.Interfaces = NewInterfaceController(app)
 	app.Jobs = NewJobController(app)
 	return app
 }
@@ -38,7 +38,7 @@ func (app *Application) ProcessRecv(port *model.Port) {
 func (app *Application) Run() {
 	go http.ListenAndServe(":8888", &CheckRouter{app.Router})
 	go app.Topics.Run()
-	go app.Drivers.Run()
+	go app.Interfaces.Run()
 	go app.Jobs.Run()
 	app.Nodes.Run()
 }

@@ -1,10 +1,10 @@
 = content main
   div.container
-    h1 Driver {{.Content.DeviceName}}
-    div#driver
+    h1 Interface {{.Content.DeviceName}}
+    div#interface
       div.widget
         div.widget-item
-          b Driver {{.Content.DeviceName}}
+          b Interface {{.Content.DeviceName}}
         div.widget-item 
           b Power Statistics:  
           ul

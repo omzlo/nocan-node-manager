@@ -216,7 +216,7 @@ func (nm *NodeModel) Register(node []byte) (Node, error) {
 		return n, nil
 	}
 
-	for i := 0; i < 128; i++ {
+	for i := 1; i < 128; i++ {
 		if nm.States[i] == nil {
 			nm.States[i] = &NodeState{Active: true, Udid: udid, Id: Node(i)}
 			nm.Udids[udid] = Node(i)

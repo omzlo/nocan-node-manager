@@ -10,6 +10,8 @@ type Message struct {
 	Data       []byte
 }
 
+type MessageFilter func(*Message) bool
+
 func NewMessage(id CanId, data []byte) *Message {
 	m := &Message{SourcePort: -1, Id: id, Data: make([]byte, 0, 64)}
 	m.Data = m.Data[:len(data)]
@@ -56,9 +58,11 @@ func (m *Message) AppendData(data []byte) bool {
 	return true
 }
 
+/*
 func (m *Message) MatchSystemMessage(node Node, fn uint8) bool {
 	return m.Id.IsSystem() && m.Id.GetNode() == node && m.Id.GetSysFunc() == fn
 }
+*/
 
 func NewSystemMessage(node Node, fn uint8, param uint8, value []byte) *Message {
 	id := CanId(CANID_MASK_SYSTEM).SetNode(node).SetSysFunc(fn).SetSysParam(param)
@@ -68,4 +72,10 @@ func NewSystemMessage(node Node, fn uint8, param uint8, value []byte) *Message {
 func NewPublishMessage(node Node, topic Topic, value []byte) *Message {
 	id := CanId(0).SetNode(node).SetTopic(topic)
 	return NewMessage(id, value)
+}
+
+func NewSystemMessageFilter(node Node, fn uint8) MessageFilter {
+	return func(m *Message) bool {
+		return m.Id.GetNode() == node && m.Id.GetSysFunc() == fn
+	}
 }

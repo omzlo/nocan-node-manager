@@ -1,0 +1,9 @@
+= content main
+  div.container
+    h1 Interfaces
+    div#interfaces
+      {{range .Content}}
+        a.button.button-primary.u-full-width href="/api/interfaces/{{.}}" Interface {{.}}
+      {{else}}
+        p There are no interfaces connected.  
+      {{end}}

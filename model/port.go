@@ -35,18 +35,30 @@ func (port *Port) SendMessage(m *Message) {
 	defer port.Manager.Mutex.Unlock()
 
 	m.Tag(port.Id)
-	//clog.Debug("> Got message on port %d (%s)", port.Id, port.Name)
 	for p := port.Manager.Head; p != nil; p = p.Next {
 		if p.Id != port.Id { // we could directly compare (p != port), same result.
-			//clog.Debug(">> Dispatch message to port %d (%s)", p.Id, p.Name)
 			p.Input <- m
-		} else {
-			//clog.Debug(">> Avoid message to port %d (%s)", p.Id, p.Name)
 		}
 	}
-	//clog.Debug("> Done message on port %d (%s)", port.Id, port.Name)
 }
 
+func (port *Port) WaitForMessage(checker MessageFilter, timeout time.Duration) *Message {
+	ticker := time.NewTicker(timeout)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case m := <-port.Input:
+			if checker(m) {
+				return m
+			}
+		case <-ticker.C: // timeout
+			return nil
+		}
+	}
+}
+
+/*
 func (port *Port) SendSystemMessage(node Node, fn uint8, param uint8, value []byte) {
 	port.SendMessage(NewSystemMessage(node, fn, param, value))
 }
@@ -73,6 +85,7 @@ func (port *Port) Publish(node Node, topic Topic, data []byte) {
 	clog.Debug("Publish %s", m.String())
 	port.SendMessage(m)
 }
+*/
 
 type PortManager struct {
 	Mutex     sync.Mutex

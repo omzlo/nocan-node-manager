@@ -3,5 +3,5 @@
     h1 NoCan Dashboard
     a.button.button-primary.u-full-width href="/api/nodes" Nodes
     a.button.button-primary.u-full-width href="/api/topics" Topics
-    a.button.button-primary.u-full-width href="/api/drivers" Drivers
+    a.button.button-primary.u-full-width href="/api/interfaces" Interfaces
 
