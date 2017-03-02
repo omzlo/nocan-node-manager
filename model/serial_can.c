@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <errno.h>
+#include <sys/ioctl.h>
 
 struct termios oldtio;
 int oldio_init = 0;
@@ -48,6 +49,11 @@ int serial_can_open(const char *devname)
         return -1;
     }
     return fd;
+}
+
+int serial_can_status(int fd, int *status)
+{
+    return ioctl(fd, TIOCMGET, &status);
 }
 
 int serial_can_send(int fd, const unsigned char data[13])

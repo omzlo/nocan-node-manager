@@ -26,6 +26,14 @@
           form.upload enctype="multipart/form-data" action="/api/nodes/{{.Id}}/flash" method="POST"
             input type="file" name="firmware"
             input type="submit" value="Upload flash"
-          a.button href="/api/nodes/{{.Id}}/eeprom" Download eeprom
-          a.button href="/api/nodes/{{.Id}}/flash" Download flash
+          button onclick="$('#progress').show();download_progress('/api/nodes/{{.Id}}/eeprom')" Download eeprom
+          button onclick="$('#progress').show();download_progress('/api/nodes/{{.Id}}/flash')" Download flash
     {{end}}
+
+  #progress.u-modal
+    .u-modal-content
+      .u-modal-header Progress
+      .u-modal-body
+        h3#job_progress Waiting
+      .u-modal-footer
+        button onclick="$('#progress').hide()" Close

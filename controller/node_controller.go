@@ -351,14 +351,16 @@ func (nfc *NodeFirmwareController) Show(w http.ResponseWriter, r *http.Request, 
 		view.LogHttpError(w, "Firmware upload or download already in progress", http.StatusConflict)
 		return
 	}
-	defer atomic.StoreInt32(&nfc.Inprogress, 0)
 	//view.LogHttpError(w, "Flash download is not implemeneted yet", http.StatusNotImplemented)
 
 	jobid := nfc.Application.Jobs.Model.CreateJob(func(state *model.JobState) {
 		nfc.DownloadFirmware(state, node, fwtype, fwsize)
+		atomic.StoreInt32(&nfc.Inprogress, 0)
 	})
 
-	http.Redirect(w, r, fmt.Sprintf("/api/jobs/%d", jobid), http.StatusSeeOther)
+	// http.Redirect(w, r, fmt.Sprintf("/api/jobs/%d", jobid), http.StatusSeeOther)
+	w.Header().Set("Location", fmt.Sprintf("/api/jobs/%d", jobid))
+	w.WriteHeader(http.StatusAccepted)
 }
 
 func (nfc *NodeFirmwareController) Create(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -387,11 +389,13 @@ func (nfc *NodeFirmwareController) Create(w http.ResponseWriter, r *http.Request
 		view.LogHttpError(w, "Firmware upload or download already in progress\n", http.StatusConflict)
 		return
 	}
-	defer atomic.StoreInt32(&nfc.Inprogress, 0)
 
 	jobid := nfc.Application.Jobs.Model.CreateJob(func(state *model.JobState) {
 		nfc.UploadFirmware(state, node, fwtype, ihex)
+		atomic.StoreInt32(&nfc.Inprogress, 0)
 	})
 
-	http.Redirect(w, r, fmt.Sprintf("/api/jobs/%d", jobid), http.StatusSeeOther)
+	// http.Redirect(w, r, fmt.Sprintf("/api/jobs/%d", jobid), http.StatusSeeOther)
+	w.Header().Set("Location", fmt.Sprintf("/api/jobs/%d", jobid))
+	w.WriteHeader(http.StatusAccepted)
 }

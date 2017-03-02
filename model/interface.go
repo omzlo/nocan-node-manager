@@ -302,6 +302,11 @@ func (ds *Interface) ProcessMessages(port *Port) {
 				}
 			}
 		case <-ticker.C:
+			if status, ok := ds.Serial.Status(); ok {
+				clog.Debug("Serial status is %x", status)
+			} else {
+				clog.Error("Serial status failed")
+			}
 			ds.SendUpdatePowerStatus()
 		}
 	}

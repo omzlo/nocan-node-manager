@@ -87,6 +87,7 @@ func main() {
 	main.Router.GET("/api/interfaces/:interf", main.Interfaces.Show)
 	main.Router.PUT("/api/interfaces/:interf", main.Interfaces.Update)
 	main.Router.GET("/api/jobs/:id", main.Jobs.Show)
+	main.Router.GET("/api/jobs/:id/result", main.Jobs.Result)
 	//main.Router.GET("/api/ports", main.Ports.Index)
 	main.Router.ServeFiles("/static/*filepath", http.Dir("../static"))
 	//main.Router.GET("/nodes", nodepage.Index)

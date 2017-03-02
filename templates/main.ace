@@ -5,3 +5,13 @@
     a.button.button-primary.u-full-width href="/api/channels" Channels
     a.button.button-primary.u-full-width href="/api/interfaces" Interfaces
 
+    button onclick="$('#testmodal').show()" Open
+
+  #testmodal.u-modal
+    .u-modal-content
+      .u-modal-header 
+        | Hello
+      .u-modal-body
+        p some text
+      .u-modal-footer
+        button onclick="$('#testmodal').hide()" Close

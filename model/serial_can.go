@@ -71,3 +71,12 @@ func (sc *SerialCan) Recv(frame *CanFrame) bool {
 	clog.Debug("SUCCESS Receiving serial frame %s", frame.String())
 	return true
 }
+
+func (sc *SerialCan) Status() (int, bool) {
+	var status C.int
+	if C.serial_can_status(sc.fd, &status) != 0 {
+		clog.Warning("FAILED to get serial status")
+		return 0, false
+	}
+	return int(status), true
+}

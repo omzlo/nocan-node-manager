@@ -9,4 +9,6 @@ int serial_can_recv(int fd, char unsigned data[13]);
 
 void serial_can_close(int fd);
 
+int serial_can_status(int fd, int *status);
+
 #endif
