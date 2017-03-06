@@ -1,6 +1,7 @@
 package model
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -8,8 +9,10 @@ import (
 	"io/ioutil"
 	"pannetrat.com/nocan/bitmap"
 	"pannetrat.com/nocan/clog"
+	"pannetrat.com/nocan/intelhex"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -73,14 +76,16 @@ func StringToUdid(s string, id []byte) error {
 }
 
 type NodeModel struct {
-	Mutex    sync.RWMutex
-	States   [128]*NodeState
-	Udids    map[string]Node
-	NodeFile string
+	Mutex      sync.RWMutex
+	States     [128]*NodeState
+	Udids      map[string]Node
+	NodeFile   string
+	Inprogress int32
+	Port       *Port
 }
 
 func NewNodeModel() *NodeModel {
-	return &NodeModel{Udids: make(map[string]Node)}
+	return &NodeModel{Udids: make(map[string]Node), Port: PortManager.CreatePort("nodes")}
 }
 
 type NodeInfo struct {
@@ -294,6 +299,22 @@ func (nm *NodeModel) GetProperties(node Node) *NodeState {
 	return nil
 }
 
+func (nm *NodeModel) DoReboot(node Node) error {
+	nm.Port.SendMessage(NewSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil))
+	if nm.Port.WaitForMessage(NewSystemMessageFilter(node, NOCAN_SYS_NODE_BOOT_ACK), DEFAULT_TIMEOUT) == nil {
+		return fmt.Errorf("Node %d could not be rebooted", node)
+	}
+	return nil
+}
+
+func (nm *NodeModel) DoPing(node Node) error {
+	nm.Port.SendMessage(NewSystemMessage(node, NOCAN_SYS_NODE_PING, 0, nil))
+	if nm.Port.WaitForMessage(NewSystemMessageFilter(node, NOCAN_SYS_NODE_PING_ACK), DEFAULT_TIMEOUT) == nil {
+		return fmt.Errorf("Node %d could not be pinged", node)
+	}
+	return nil
+}
+
 func (nm *NodeModel) ByUdid(uid [8]byte) (Node, bool) {
 	nm.Mutex.RLock()
 	defer nm.Mutex.RUnlock()
@@ -314,13 +335,13 @@ func (nm *NodeModel) Touch(node Node) {
 	}
 }
 
-func (nm *NodeModel) Each(fn func(Node, *NodeState, interface{}), data interface{}) {
+func (nm *NodeModel) Each(fn func(Node, *NodeState)) {
 	nm.Mutex.Lock()
 	defer nm.Mutex.Unlock()
 
 	for i := 0; i < 128; i++ {
 		if ns := nm.getState(Node(i)); ns != nil {
-			fn(Node(i), ns, data)
+			fn(Node(i), ns)
 		}
 	}
 }
@@ -333,4 +354,172 @@ func (nm *NodeModel) getState(node Node) *NodeState {
 		return nm.States[node]
 	}
 	return nil
+}
+
+const (
+	SPM_PAGE_SIZE = 128
+	READ_SIZE     = 2048
+)
+
+func (nm *NodeModel) DownloadFirmware(state *JobState, node Node, memtype byte, memlength uint32) error {
+	var address uint32
+	var i uint32
+	var data [8]byte
+
+	clog.Debug("Initiate down")
+	if !atomic.CompareAndSwapInt32(&nm.Inprogress, 0, 1) {
+		err := fmt.Errorf("Firmware upload or download already in progress, ignoring new request")
+		state.UpdateStatus(JobFailed, err)
+		return err
+	}
+	defer atomic.StoreInt32(&nm.Inprogress, 0)
+
+	// If we don't do this and use nm.Port instead, we will conflict with Run()
+	port := PortManager.CreatePort("firmware-download")
+	defer PortManager.DestroyPort(port)
+
+	port.SendMessage(NewSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil))
+
+	if port.WaitForMessage(NewSystemMessageFilter(node, NOCAN_SYS_NODE_BOOT_ACK), EXTENDED_TIMEOUT) == nil {
+		err := fmt.Errorf("NOCAN_SYS_NODE_BOOT_ACK failed for node %d", node)
+		state.UpdateStatus(JobFailed, err)
+		return err
+	}
+
+	ihex := intelhex.New()
+
+	for i = 0; i < memlength/SPM_PAGE_SIZE; i++ {
+		address = i * SPM_PAGE_SIZE
+		data[0] = 0
+		data[1] = 0
+		data[2] = byte(address >> 8)
+		data[3] = byte(address & 0xFF)
+		port.SendMessage(NewSystemMessage(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS, memtype, data[:4]))
+		if port.WaitForMessage(NewSystemMessageFilter(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS_ACK), DEFAULT_TIMEOUT) == nil {
+			err := fmt.Errorf("NOCAN_SYS_BOOTLOADER_SET_ADDRESS failed for node %d at address=0x%x", node, address)
+			state.UpdateStatus(JobFailed, err)
+			return err
+		}
+		for pos := 0; pos < SPM_PAGE_SIZE; pos += 8 {
+			port.SendMessage(NewSystemMessage(node, NOCAN_SYS_BOOTLOADER_READ, 8, nil))
+			response := port.WaitForMessage(NewSystemMessageFilter(node, NOCAN_SYS_BOOTLOADER_READ_ACK), DEFAULT_TIMEOUT)
+			if response == nil {
+				err := fmt.Errorf("NOCAN_SYS_BOOTLOADER_READ failed for node %d at address=0x%x", node, address)
+				state.UpdateStatus(JobFailed, err)
+				return err
+			}
+			ihex.Add(0, address, response.Data)
+			address += 8
+		}
+		state.UpdateProgress(uint(address * 100 / memlength))
+	}
+	var buf bytes.Buffer
+	ihex.Save(&buf)
+	state.Result = buf.Bytes()
+	state.UpdateProgress(100)
+	state.UpdateStatus(JobCompleted, nil)
+	return nil
+}
+
+func (nm *NodeModel) UploadFirmware(state *JobState, node Node, memtype byte, ihex *intelhex.IntelHex) error {
+	var address uint32
+	var data [8]byte
+
+	if !atomic.CompareAndSwapInt32(&nm.Inprogress, 0, 1) {
+		return fmt.Errorf("Firmware upload or download already in progress, ignoring new request")
+	}
+	defer atomic.StoreInt32(&nm.Inprogress, 0)
+
+	// If we don't do this and use nm.Port instead, we will conflict with Run()
+	port := PortManager.CreatePort("firmware-upload")
+	defer PortManager.DestroyPort(port)
+
+	port.SendMessage(NewSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil))
+
+	if port.WaitForMessage(NewSystemMessageFilter(node, NOCAN_SYS_NODE_BOOT_ACK), EXTENDED_TIMEOUT) == nil {
+		err := fmt.Errorf("NOCAN_SYS_NODE_BOOT_ACK failed for node %d", node)
+		state.UpdateStatus(JobFailed, err)
+		return err
+	}
+
+	for _, block := range ihex.Blocks {
+		blocksize := uint32(len(block.Data))
+
+		for page_offset := uint32(0); page_offset < blocksize; page_offset += SPM_PAGE_SIZE {
+			base_address := block.Address + page_offset
+			data[0] = 0
+			data[1] = 0
+			data[2] = byte(base_address >> 8)
+			data[3] = byte(base_address & 0xFF)
+			port.SendMessage(NewSystemMessage(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS, memtype, data[:4]))
+			if port.WaitForMessage(NewSystemMessageFilter(node, NOCAN_SYS_BOOTLOADER_SET_ADDRESS_ACK), DEFAULT_TIMEOUT) == nil {
+				err := fmt.Errorf("NOCAN_SYS_BOOTLOADER_SET_ADDRESS failed for node %d at address=0x%x", node, address)
+				state.UpdateStatus(JobFailed, err)
+				return err
+			}
+
+			for page_pos := uint32(0); page_pos < SPM_PAGE_SIZE && page_offset+page_pos < blocksize; page_pos += 8 {
+				rlen := block.Copy(data[:], page_offset+page_pos, 8)
+				port.SendMessage(NewSystemMessage(node, NOCAN_SYS_BOOTLOADER_WRITE, 0, data[:rlen]))
+				response := port.WaitForMessage(NewSystemMessageFilter(node, NOCAN_SYS_BOOTLOADER_WRITE_ACK), DEFAULT_TIMEOUT)
+				if response == nil {
+					err := fmt.Errorf("NOCAN_SYS_BOOTLOADER_WRITE failed for node %d at address=0x%x", node, address)
+					state.UpdateStatus(JobFailed, err)
+					return err
+				}
+			}
+			port.SendMessage(NewSystemMessage(node, NOCAN_SYS_BOOTLOADER_WRITE, 1, nil))
+			response := port.WaitForMessage(NewSystemMessageFilter(node, NOCAN_SYS_BOOTLOADER_WRITE_ACK), DEFAULT_TIMEOUT)
+			if response == nil {
+				err := fmt.Errorf("Final NOCAN_SYS_BOOTLOADER_WRITE failed for node %d at address=0x%x", node, address)
+				state.UpdateStatus(JobFailed, err)
+				return err
+			}
+			state.UpdateProgress(uint((page_offset * 100) / blocksize))
+		}
+	}
+	state.Result = []byte("Uploaded")
+	state.UpdateProgress(100)
+	state.UpdateStatus(JobCompleted, nil)
+	return nil
+}
+
+func (nm *NodeModel) Run() {
+	for {
+		m := <-nm.Port.Input
+
+		nm.Touch(m.Id.GetNode())
+
+		if m.Id.IsSystem() {
+			switch m.Id.GetSysFunc() {
+			case NOCAN_SYS_ADDRESS_REQUEST:
+				node_id, err := nm.Register(m.Data)
+				if err != nil {
+					clog.Warning("NOCAN_SYS_ADDRESS_REQUEST: Failed to register %s, %s", UdidToString(m.Data), err.Error())
+				} else {
+					clog.Info("NOCAN_SYS_ADDRESS_REQUEST: Registered %s as node %d", UdidToString(m.Data), node_id)
+				}
+				msg := NewSystemMessage(0, NOCAN_SYS_ADDRESS_CONFIGURE, uint8(node_id), m.Data)
+				nm.Port.SendMessage(msg)
+			case NOCAN_SYS_ADDRESS_CONFIGURE_ACK:
+				// TODO
+			case NOCAN_SYS_ADDRESS_LOOKUP:
+				node_id, _ := nm.Lookup(m.Data)
+				msg := NewSystemMessage(m.Id.GetNode(), NOCAN_SYS_ADDRESS_LOOKUP_ACK, uint8(node_id), m.Data)
+				nm.Port.SendMessage(msg)
+			case NOCAN_SYS_CHANNEL_SUBSCRIBE:
+				if nm.Subscribe(m.Id.GetNode(), m.Data) {
+					clog.Info("NOCAN_SYS_CHANNEL_SUBSCRIBE: Node %d successfully subscribed to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
+				} else {
+					clog.Warning("NOCAN_SYS_CHANNEL_SUBSCRIBE: Node %d failed to subscribe to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
+				}
+			case NOCAN_SYS_CHANNEL_UNSUBSCRIBE:
+				if nm.Unsubscribe(m.Id.GetNode(), m.Data) {
+					clog.Info("NOCAN_SYS_CHANNEL_UNSUBSCRIBE: Node %d successfully unsubscribed to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
+				} else {
+					clog.Warning("NOCAN_SYS_CHANNEL_UNSUBSCRIBE: Node %d failed to unsubscribe to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
+				}
+			}
+		}
+	}
 }

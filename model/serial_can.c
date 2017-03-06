@@ -56,14 +56,19 @@ int serial_can_status(int fd, int *status)
     return ioctl(fd, TIOCMGET, &status);
 }
 
-int serial_can_send(int fd, const unsigned char data[13])
+int serial_can_send(int fd, const unsigned char *data)
 {
-    return write(fd,data,13)==13;
+    ssize_t to_write = (*data&0xF)+1;
+    return write(fd,data,to_write)==to_write;
 }
 
-int serial_can_recv(int fd, unsigned char data[13])
+int serial_can_recv(int fd, unsigned char *data)
 {
-    return read(fd,data,13)==13;
+    ssize_t to_read;
+    if (read(fd,data,1)!=1)
+        return 0;
+    to_read = (*data)&0xF;
+    return read(fd,data+1,to_read)==to_read;
 }
 
 void serial_can_close(int fd)

@@ -8,14 +8,14 @@
           b Node {{.Id}}
         div.widget-item 
           b Udid:  
-          {{.Udid}}
+          | {{.Udid}}
         div.widget-item 
           b Last seen: 
-          {{.LastSeen}}
+          | {{.LastSeen}}
         {{range $k, $v := .Attributes}}
           div.widget-item 
             b {{$k}}:  
-            {{$v}}
+            | {{$v}}
         {{else}}
           div.widget-item No custom attributes are defined for this node.
         {{end}}

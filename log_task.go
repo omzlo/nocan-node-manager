@@ -7,12 +7,11 @@ import (
 )
 
 type LogTask struct {
-	Application *controller.Application
-	Port        *model.Port
+	Port *model.Port
 }
 
 func NewLogTask(app *controller.Application) *LogTask {
-	task := &LogTask{Application: app, Port: app.PortManager.CreatePort("log")}
+	task := &LogTask{Port: model.PortManager.CreatePort("log")}
 	return task
 }
 

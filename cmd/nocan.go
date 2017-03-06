@@ -38,30 +38,26 @@ func init() {
 }
 
 func main() {
-	//var id [8]byte
-
 	flag.Parse()
 
 	clog.Debug("Start")
+	model.Nodes.LoadFromFile("nodes.dat")
 
 	main := controller.NewApplication()
-	//model.StringToUdid("01:02:03:04:05:06:07:88", id[:])
-	//main.Nodes.Model.Register(id[:])
 
 	if len(optDeviceStrings) > 0 {
 		for _, itr := range optDeviceStrings {
-			device, err := model.NewInterface(itr)
+			_, err := model.Interfaces.AddInterface(itr)
 			if err != nil {
 				return
 			}
-			main.Interfaces.Model.Add(device)
 		}
 	} else {
 		clog.Warning("No interface was specified! Not much to do here.")
 	}
 
 	for _, itr := range optChannels {
-		main.Channels.Model.Register(itr)
+		model.Channels.Register(itr)
 	}
 
 	if optLogTask {
@@ -79,10 +75,10 @@ func main() {
 	main.Router.GET("/api/nodes", main.Nodes.Index)
 	main.Router.GET("/api/nodes/:node", main.Nodes.Show)
 	main.Router.PUT("/api/nodes/:node", main.Nodes.Update)
-	main.Router.GET("/api/nodes/:node/flash", main.Nodes.Firmware.Show)
-	main.Router.POST("/api/nodes/:node/flash", main.Nodes.Firmware.Create)
-	main.Router.GET("/api/nodes/:node/eeprom", main.Nodes.Firmware.Show)
-	main.Router.POST("/api/nodes/:node/eeprom", main.Nodes.Firmware.Create)
+	main.Router.GET("/api/nodes/:node/flash", main.Nodes.ShowFirmware)
+	main.Router.POST("/api/nodes/:node/flash", main.Nodes.CreateFirmware)
+	main.Router.GET("/api/nodes/:node/eeprom", main.Nodes.ShowFirmware)
+	main.Router.POST("/api/nodes/:node/eeprom", main.Nodes.CreateFirmware)
 	main.Router.GET("/api/interfaces", main.Interfaces.Index)
 	main.Router.GET("/api/interfaces/:interf", main.Interfaces.Show)
 	main.Router.PUT("/api/interfaces/:interf", main.Interfaces.Update)
