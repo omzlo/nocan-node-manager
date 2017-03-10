@@ -9,38 +9,29 @@ import (
 )
 
 type Application struct {
-	//Port        *model.Port
-	PortManager *model.PortManager
-	Router      *httprouter.Router
-	Channels    *ChannelController
-	Nodes       *NodeController
-	Interfaces  *InterfaceController
-	Jobs        *JobController
+	Router     *httprouter.Router
+	Channels   *ChannelController
+	Nodes      *NodeController
+	Interfaces *InterfaceController
+	Jobs       *JobController
 }
 
 func NewApplication() *Application {
 	app := &Application{}
-	app.PortManager = model.NewPortManager()
 	app.Router = httprouter.New()
-	app.Nodes = NewNodeController(app, "nodes.dat")
-	app.Channels = NewChannelController(app)
-	app.Interfaces = NewInterfaceController(app)
-	app.Jobs = NewJobController(app)
+	app.Channels = NewChannelController()
+	app.Nodes = NewNodeController()
+	app.Interfaces = NewInterfaceController()
+	app.Jobs = NewJobController()
 	return app
 }
 
-/*
-func (app *Application) ProcessRecv(port *model.Port) {
-	<-port.Input
-}
-*/
-
 func (app *Application) Run() {
 	go http.ListenAndServe(":8888", &CheckRouter{app.Router})
-	go app.Channels.Run()
-	go app.Interfaces.Run()
-	go app.Jobs.Run()
-	app.Nodes.Run()
+	go model.Channels.Run()
+	go model.Interfaces.Run()
+	go model.Jobs.Run()
+	model.Nodes.Run()
 }
 
 /****/

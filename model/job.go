@@ -102,3 +102,7 @@ func (jm *JobModel) FinalizeJob(job uint) bool {
 	delete(jm.Jobs, job)
 	return true
 }
+
+func (jm *JobModel) Run() {
+	/* do nothing */
+}

@@ -31,6 +31,41 @@ func (frame *CanFrame) String() string {
 	return s + "]"
 }
 
+func (frame *CanFrame) UnmarshalBinary(p []byte) error {
+	if len(p) != 16 {
+		return fmt.Errorf("CanFrame.Load: Data block must be 16 bytes, got %d", len(p))
+	}
+	if p[0] != SERIAL_HEADER_PACKET {
+		return fmt.Errorf("CanFrame.Load: Bad header, expected %x, got %x", SERIAL_HEADER_PACKET, p[0])
+	}
+	frame.CanId = (CanId(p[3]) << 24) | (CanId(p[4]) << 16) | (CanId(p[5]) << 8) | CanId(p[6])
+	frame.CanDlc = uint8(p[7])
+	if frame.CanDlc > 8 {
+		return fmt.Errorf("CanFrame.Load: DLC must be less or equal to 8, got %d", frame.CanDlc)
+	}
+	for i := 0; i < 8; i++ {
+		frame.CanData[i] = uint8(p[8+i])
+	}
+	return nil
+}
+
+func (frame *CanFrame) MarshalBinary() (data []byte, err error) {
+	err = nil
+	data = make([]byte, 16)
+	data[0] = SERIAL_HEADER_PACKET
+	data[1] = 0
+	data[2] = 0
+	data[3] = uint8(frame.CanId >> 24)
+	data[4] = uint8(frame.CanId >> 16)
+	data[5] = uint8(frame.CanId >> 8)
+	data[6] = uint8(frame.CanId)
+	data[7] = uint8(frame.CanDlc)
+	for i := 0; i < 8; i++ {
+		data[8+i] = uint8(frame.CanData[i])
+	}
+	return
+}
+
 const (
 	CANID_MASK_EXTENDED = (1 << 31)
 	CANID_MASK_REMOTE   = (1 << 30)

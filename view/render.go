@@ -172,7 +172,7 @@ func RenderAceTemplate(w http.ResponseWriter, base string, template string, cont
 		LogHttpError(w, err.Error(), http.StatusInternalServerError)
 		return false
 	}
-	tpl, err := ace.Load(base, template, &ace.Options{BaseDir: "../templates", Indent: "  ", DynamicReload: true})
+	tpl, err := ace.Load(base, template, &ace.Options{BaseDir: "../view", Indent: "  ", DynamicReload: true})
 	if err != nil {
 		LogHttpError(w, err.Error(), http.StatusInternalServerError)
 		return false
@@ -185,9 +185,11 @@ func RenderAceTemplate(w http.ResponseWriter, base string, template string, cont
 }
 
 func RedirectTo(w http.ResponseWriter, r *http.Request, where string, context ContextHolder) {
-	if err := context.CommitSession(w); err != nil {
-		LogHttpError(w, err.Error(), http.StatusInternalServerError)
-		return
+	if context != nil {
+		if err := context.CommitSession(w); err != nil {
+			LogHttpError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 	http.Redirect(w, r, where, http.StatusSeeOther)
 }

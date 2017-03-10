@@ -26,3 +26,42 @@
 .upload {
     margin: 0
 }
+
+.u-modal {
+    z-index:3;
+    display:none;
+    padding-top:100px;
+    position:fixed;
+    left:0;
+    top:0;
+    width:100%;
+    height:100%;
+    overflow:auto;
+    background-color:rgb(0,0,0);
+    background-color:rgba(0,0,0,0.4)
+}
+.u-modal-content {
+    margin:auto;
+    background-color:#fff;
+    position:relative;
+    padding:0;
+    outline:0;
+    width:600px
+}
+.u-modal-header {
+    background: #EEE;
+    font-size: 2rem;
+    padding: 0 1em; 
+    text-align: center;
+    border-bottom: 1px solid black;
+}
+
+.u-modal-body {
+    padding: 1em;
+}
+
+.u-modal-footer {
+    background: #EEE;
+    padding: 1em;
+    border-top: 1px solid black;
+}

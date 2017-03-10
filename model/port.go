@@ -16,12 +16,12 @@ type PortId int
 type Port struct {
 	Id      PortId
 	Name    string
-	Manager *PortManager
+	Manager *PortManagerModel
 	Input   chan *Message
 	Next    *Port
 }
 
-func newPort(manager *PortManager, name string) *Port {
+func newPort(manager *PortManagerModel, name string) *Port {
 	return &Port{
 		Name:    name,
 		Manager: manager,
@@ -34,9 +34,11 @@ func (port *Port) SendMessage(m *Message) {
 	port.Manager.Mutex.Lock()
 	defer port.Manager.Mutex.Unlock()
 
+	//clog.Debug("Send from port %s: %s", port.Name, m.String())
 	m.Tag(port.Id)
 	for p := port.Manager.Head; p != nil; p = p.Next {
 		if p.Id != port.Id { // we could directly compare (p != port), same result.
+			//clog.Debug("Send to port %s: %s", p.Name, m.String())
 			p.Input <- m
 		}
 	}
@@ -58,58 +60,18 @@ func (port *Port) WaitForMessage(checker MessageFilter, timeout time.Duration) *
 	}
 }
 
-/*
-func (port *Port) SendSystemMessage(node Node, fn uint8, param uint8, value []byte) {
-	port.SendMessage(NewSystemMessage(node, fn, param, value))
-}
-
-func (port *Port) WaitForSystemMessage(node Node, fn uint8, timeout time.Duration) *Message {
-	ticker := time.NewTicker(timeout)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case m := <-port.Input:
-			//clog.Debug("$$$$$ Check that %d == %d and %d == %d", m.Id.GetNode(), node, m.Id.GetSysFunc(), fn)
-			if m.Id.GetNode() == node && m.Id.GetSysFunc() == fn {
-				return m
-			}
-		case <-ticker.C: // timeout
-			return nil
-		}
-	}
-}
-
-func (port *Port) Publish(node Node, channel Channel, data []byte) {
-	m := NewPublishMessage(node, channel, data)
-	clog.Debug("Publish %s", m.String())
-	port.SendMessage(m)
-}
-*/
-
-type PortManager struct {
+type PortManagerModel struct {
 	Mutex     sync.Mutex
 	LastId    PortId
 	PortCount uint
 	Head      *Port
 }
 
-func NewPortManager() *PortManager {
-	return &PortManager{}
+func NewPortManagerModel() *PortManagerModel {
+	return &PortManagerModel{}
 }
 
-/*
-func (pm *PortModel) Each(fn func(Port, *PortState, interface{}), extra interface{}) {
-	pm.Mutex.Lock()
-	defer pm.Mutex.Unlock()
-
-	for iport, vport := range pm.Ports {
-		fn(Port(iport), vport, extra)
-	}
-}
-*/
-
-func (pm *PortManager) CreatePort(name string) *Port {
+func (pm *PortManagerModel) CreatePort(name string) *Port {
 	port := newPort(pm, name)
 
 	pm.Mutex.Lock()
@@ -127,7 +89,7 @@ func (pm *PortManager) CreatePort(name string) *Port {
 	return port
 }
 
-func (pm *PortManager) DestroyPort(port *Port) bool {
+func (pm *PortManagerModel) DestroyPort(port *Port) bool {
 	var iter **Port
 
 	clog.Debug("Destroying Port %d \"%s\" - there are %d remaining tasks", port.Id, port.Name, pm.PortCount-1)

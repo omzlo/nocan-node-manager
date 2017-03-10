@@ -10,55 +10,66 @@ import (
 )
 
 type JobController struct {
-	Application *Application
-	Model       *model.JobModel
 }
 
-func NewJobController(app *Application) *JobController {
-	controller := &JobController{Application: app, Model: model.NewJobModel()}
+func NewJobController() *JobController {
+	controller := &JobController{}
 	return controller
 }
 
-func GetJobId(jobIdString string) (uint, error) {
-	job, err := strconv.ParseUint(jobIdString, 10, 32)
+func (jc *JobController) GetJobId(w http.ResponseWriter, jobIdString string) *model.JobState {
+	jobId, err := strconv.ParseUint(jobIdString, 10, 32)
 	if err != nil {
-		return 0, err
+		view.LogHttpError(w, "Could not understand job "+jobIdString, http.StatusBadRequest)
+		return nil
 	}
-	return uint(job), nil
+
+	job := model.Jobs.FindJob(uint(jobId))
+	if job == nil {
+		view.LogHttpError(w, "Could not find job "+jobIdString, http.StatusNotFound)
+		return nil
+	}
+
+	return job
 }
 
 func (jc *JobController) Show(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	jobIdString := params.ByName("id")
-	jobId, err := GetJobId(jobIdString)
-	if err != nil {
-		view.LogHttpError(w, "Could not understand job "+jobIdString, http.StatusBadRequest)
-		return
-	}
-
-	job := jc.Model.FindJob(jobId)
+	job := jc.GetJobId(w, jobIdString)
 	if job == nil {
-		view.LogHttpError(w, "Could not find job "+jobIdString, http.StatusNotFound)
 		return
 	}
 
 	switch job.GetStatus() {
 	case model.JobStarted:
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "%d", job.GetProgress())
 
 	case model.JobCompleted:
-		w.WriteHeader(http.StatusOK)
 		if job.Result != nil {
-			w.Write(job.Result)
+			w.Header().Set("Location", r.RequestURI+"/result")
+		} else {
+			model.Jobs.FinalizeJob(job.Id)
 		}
-		jc.Model.FinalizeJob(jobId)
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "done")
 
 	case model.JobFailed:
-		view.LogHttpError(w, fmt.Sprintf("Job %d failed, %s", jobId, job.FailureReason.Error()), http.StatusServiceUnavailable)
-		jc.Model.FinalizeJob(jobId)
+		view.LogHttpError(w, fmt.Sprintf("Job %d failed, %s", job.Id, job.FailureReason.Error()), http.StatusServiceUnavailable)
+		model.Jobs.FinalizeJob(job.Id)
 	}
 }
 
-func (jc *JobController) Run() {
-	/* do nothing */
+func (jc *JobController) Result(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
+	jobIdString := params.ByName("id")
+	job := jc.GetJobId(w, jobIdString)
+	if job == nil {
+		return
+	}
+	w.Header().Set("Content-Disposition", "attachment; filename=\"firmware.hex\"")
+	w.WriteHeader(http.StatusOK)
+	if job.Result != nil {
+		w.Write(job.Result)
+	}
+	model.Jobs.FinalizeJob(job.Id)
 }

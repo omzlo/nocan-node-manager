@@ -1,4 +1,4 @@
-package controller
+package model
 
 const (
 	NOCAN_SYS_ANY                   = 0
