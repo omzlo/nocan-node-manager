@@ -478,7 +478,7 @@ func (nm *NodeModel) UploadFirmware(state *JobState, node Node, memtype byte, ih
 			state.UpdateProgress(uint((page_offset * 100) / blocksize))
 		}
 	}
-	state.Result = []byte("Uploaded")
+	state.Result = nil
 	state.UpdateProgress(100)
 	state.UpdateStatus(JobCompleted, nil)
 	return nil

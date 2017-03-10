@@ -72,3 +72,28 @@ function download_progress(job) {
     xhttp1.open("GET", job, true);
     xhttp1.send(); 
 }
+
+function upload_progress(job, data) {
+    var xhttp1 = Ajax();
+    xhttp1.onreadystatechange = update_progress
+    xhttp1.open("POST", job, true);
+    xhttp1.send(data); 
+}
+
+function upload(obj, e) {
+    e.preventDefault();
+    if (!obj["firmware"].value) {
+        alert("Missing file for upload!");
+        return
+    } 
+    formData = new FormData();
+    formData.append('firmware', obj["firmware"].files[0], obj["firmware"].files[0].name);
+    $('#progress').show();
+    upload_progress(obj.action, formData);
+} 
+
+function download(obj, e) {
+    e.preventDefault();
+    $('#progress').show();
+    download_progress(obj.href); 
+}

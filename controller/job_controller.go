@@ -66,6 +66,7 @@ func (jc *JobController) Result(w http.ResponseWriter, r *http.Request, params h
 	if job == nil {
 		return
 	}
+	w.Header().Set("Content-Disposition", "attachment; filename=\"firmware.hex\"")
 	w.WriteHeader(http.StatusOK)
 	if job.Result != nil {
 		w.Write(job.Result)

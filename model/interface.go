@@ -124,9 +124,14 @@ func (ds *InterfaceState) DoRequestPowerStatus() error {
 	ds.PowerStatus.PowerOn = ((response[1] & POWER_FLAGS_SUPPLY) != 0)
 	ds.PowerStatus.SenseOn = ((response[1] & POWER_FLAGS_SENSE) != 0)
 	ds.PowerStatus.Fault = ((response[1] & POWER_FLAGS_FAULT) != 0)
-	ds.PowerStatus.PowerLevel = float32(powerlevel) / float32(usbref) * 1.1 * 7.2
 	ds.PowerStatus.SenseLevel = 100 * float32(senselevel) / 1023
-	ds.PowerStatus.UsbReference = 1023 * 1.1 / float32(usbref)
+	if usbref > 0 {
+		ds.PowerStatus.PowerLevel = float32(powerlevel) / float32(usbref) * 1.1 * 7.2
+		ds.PowerStatus.UsbReference = 1023 * 1.1 / float32(usbref)
+	} else {
+		ds.PowerStatus.PowerLevel = 0
+		ds.PowerStatus.UsbReference = 0
+	}
 	errLevel := clog.INFO
 	if ds.PowerStatus.Fault {
 		errLevel = clog.WARNING
@@ -217,6 +222,7 @@ func (ds *InterfaceState) assemblePacket(packet []byte) error {
 			ds.InputBuffer[node].AppendData(frame.CanData[:frame.CanDlc])
 		}
 		if frame.CanId.IsLast() {
+
 			ds.Port.SendMessage(ds.InputBuffer[node])
 			ds.InputBuffer[node] = nil
 		}

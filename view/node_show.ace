@@ -20,14 +20,14 @@
           div.widget-item No custom attributes are defined for this node.
         {{end}}
         div.widget-item
-          form.upload enctype="multipart/form-data" action="/api/nodes/{{.Id}}/eeprom" method="POST"
+          form.upload enctype="multipart/form-data" action="/api/nodes/{{.Id}}/eeprom" id="eeprom-upload" method="POST"
             input type="file" name="firmware"
             input type="submit" value="Upload eeprom"
-          form.upload enctype="multipart/form-data" action="/api/nodes/{{.Id}}/flash" method="POST"
+          form.upload enctype="multipart/form-data" action="/api/nodes/{{.Id}}/flash" id="flash-upload" method="POST"
             input type="file" name="firmware"
             input type="submit" value="Upload flash"
-          button onclick="$('#progress').show();download_progress('/api/nodes/{{.Id}}/eeprom')" Download eeprom
-          button onclick="$('#progress').show();download_progress('/api/nodes/{{.Id}}/flash')" Download flash
+          a.button id="eeprom-download" href="/api/nodes/{{.Id}}/eeprom" Download eeprom
+          a.button id="flash-download" href="/api/nodes/{{.Id}}/flash" Download flash
     {{end}}
 
   #progress.u-modal
@@ -36,4 +36,13 @@
       .u-modal-body
         h3#job_progress Waiting
       .u-modal-footer
-        button onclick="$('#progress').hide()" Close
+        button id="progress-close" Close
+
+  = javascript
+    window.onload = function(){
+      $("#progress-close").on("click",function(){$("#progress").hide()});
+      $("#flash-upload").on("submit",function(e){upload(this, e)});
+      $("#eeprom-upload").on("submit",function(e){upload(this, e)});
+      $("#flash-download").on("click", function(e){download(this, e)});
+      $("#eeprom-download").on("click", function(e){download(this, e)});
+    }
