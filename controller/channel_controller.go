@@ -8,6 +8,7 @@ import (
 	"pannetrat.com/nocan/model"
 	"pannetrat.com/nocan/view"
 	"strings"
+    "encoding/hex"
 )
 
 type ChannelController struct {
@@ -47,7 +48,7 @@ func (tc *ChannelController) Show(w http.ResponseWriter, r *http.Request, params
 	channel := tc.Model.FindByName(channelName)
 
 	if channel < 0 {
-		http.Error(w, "Channel does not exist", http.StatusNotFound)
+		view.LogHttpError(w, "Channel does not exist", http.StatusNotFound)
 		return
 	}
 	content, _ := tc.Model.GetContent(channel)
@@ -68,15 +69,25 @@ func (tc *ChannelController) Update(w http.ResponseWriter, r *http.Request, para
 	channel := tc.Model.FindByName(channelName)
 
 	if channel < 0 {
-		http.Error(w, "Channel "+channelName+" does not exist", http.StatusNotFound)
+		view.LogHttpError(w, "Channel "+channelName+" does not exist", http.StatusNotFound)
 		return
 	}
 
 	r.ParseForm()
 
-	value := []byte(r.Form.Get("value"))
-	tc.Model.SetContent(channel, value)
-	tc.Port.SendMessage(model.NewPublishMessage(0, channel, value))
+    var dst []byte
+    var err error
+	value := r.Form.Get("value")
+    if len(value)>1 && value[0]=='#' {
+        if dst, err = hex.DecodeString(value[1:]); err!=nil {
+            view.LogHttpError(w, "Error decoding hexadecimal string: " + err.Error(), http.StatusBadRequest)
+            return
+        }
+    } else {
+        dst = []byte(value)
+    }
+	tc.Model.SetContent(channel, dst)
+	tc.Port.SendMessage(model.NewPublishMessage(0, channel, dst))
 
 	if !AcceptJSON(r) {
 		context := view.NewContext(r, nil)
