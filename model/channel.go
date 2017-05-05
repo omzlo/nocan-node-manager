@@ -2,15 +2,15 @@ package model
 
 import (
 	"errors"
-	"pannetrat.com/nocan/bitmap"
 	"pannetrat.com/nocan/clog"
 	"sync"
 	"time"
 )
 
-type Channel int8
+type Channel int16
 
 type ChannelState struct {
+	ChannelId   Channel
 	Name        string
 	ValueLength int
 	Value       [64]byte
@@ -19,15 +19,18 @@ type ChannelState struct {
 
 type ChannelModel struct {
 	Mutex  sync.RWMutex
-	States [64]*ChannelState
-	Names  map[string]Channel
+	ById   map[Channel]*ChannelState
+	ByName map[string]*ChannelState
 	Port   *Port
+	TopId  Channel
 }
 
 func NewChannelModel() *ChannelModel {
 	tm := &ChannelModel{
-		Names: make(map[string]Channel),
-		Port:  PortManager.CreatePort("channels"),
+		ById:   make(map[Channel]*ChannelState),
+		ByName: make(map[string]*ChannelState),
+		Port:   PortManager.CreatePort("channels"),
+		TopId:  0,
 	}
 	return tm
 }
@@ -36,16 +39,12 @@ func (tm *ChannelModel) Each(fn func(Channel, *ChannelState)) {
 	tm.Mutex.Lock()
 	defer tm.Mutex.Unlock()
 
-	for i := 0; i < 64; i++ {
-		if tm.States[i] != nil {
-			fn(Channel(i), tm.States[i])
-		}
+	for k, v := range tm.ById {
+		fn(k, v)
 	}
 }
 
 func (tm *ChannelModel) Register(channelName string) (Channel, error) {
-	var i Channel
-
 	if len(channelName) == 0 {
 		return Channel(-1), errors.New("Channel cannot be empty")
 	}
@@ -53,16 +52,24 @@ func (tm *ChannelModel) Register(channelName string) (Channel, error) {
 	tm.Mutex.Lock()
 	defer tm.Mutex.Unlock()
 
-	if i, ok := tm.Names[channelName]; ok {
-		return i, nil
+	if state, ok := tm.ByName[channelName]; ok {
+		return state.ChannelId, nil
 	}
-	for i = 0; i < 64; i++ {
-		if tm.States[i] == nil {
-			tm.States[i] = &ChannelState{Name: channelName, UpdatedAt: time.Now()}
-			tm.Names[channelName] = i
-			return i, nil
+
+	for {
+		if tm.TopId < 0 {
+			tm.TopId = 0
 		}
+		if state, ok := tm.ById[tm.TopId]; !ok {
+			state = &ChannelState{ChannelId: tm.TopId, Name: channelName, UpdatedAt: time.Now()}
+			tm.ById[tm.TopId] = state
+			tm.ByName[channelName] = state
+			tm.TopId++
+			return state.ChannelId, nil
+		}
+		tm.TopId++
 	}
+	// never reached
 	return Channel(-1), errors.New("Maximum numver of channels has been reached")
 }
 
@@ -74,32 +81,20 @@ func (tm *ChannelModel) Unregister(channel Channel) bool {
 	if ts == nil {
 		return false
 	}
-	delete(tm.Names, ts.Name)
+	delete(tm.ByName, ts.Name)
+	delete(tm.ById, ts.ChannelId)
 	ts.Name = ""
 	return true
 }
 
-func (tm *ChannelModel) Lookup(channelName string, channel_bitmap []byte) bool {
+func (tm *ChannelModel) Lookup(channelName string) (Channel, bool) {
 	tm.Mutex.RLock()
 	defer tm.Mutex.RUnlock()
 
-	// TODO: extend with '+',attributes, etc.
-	bitmap.Bitmap64Fill(channel_bitmap, 0)
-	if i, ok := tm.Names[channelName]; ok {
-		bitmap.Bitmap64Set(channel_bitmap, uint(i))
-		return true
+	if state, ok := tm.ByName[channelName]; ok {
+		return state.ChannelId, true
 	}
-	return false
-}
-
-func (tm *ChannelModel) FindByName(channelName string) Channel {
-	tm.Mutex.RLock()
-	defer tm.Mutex.RUnlock()
-
-	if i, ok := tm.Names[channelName]; ok {
-		return i
-	}
-	return Channel(-1)
+	return Channel(-1), false
 }
 
 func (tm *ChannelModel) GetContent(channel Channel) ([]byte, bool) {
@@ -135,57 +130,75 @@ func (tm *ChannelModel) Publish(channel Channel, content []byte) bool {
 }
 
 func (tm *ChannelModel) getState(channel Channel) *ChannelState {
-	if channel < 0 || channel > 63 {
-		return nil
+	if state, ok := tm.ById[channel]; ok {
+		return state
 	}
-	return tm.States[channel]
+	return nil
+}
+
+func ChannelToBytes(channel_id Channel, block []uint8) {
+	block[0] = uint8(channel_id >> 8)
+	block[1] = uint8(channel_id & 0xFF)
+}
+
+func BytesToChannel(block []uint8) Channel {
+	return (Channel(block[0]) << 8) | Channel(block[1])
 }
 
 func (tm *ChannelModel) Run() {
+	var channel_id Channel
+	var channel_bytes [2]uint8
+	var status uint8
+
 	for {
 		m := <-tm.Port.Input
 
 		if m.Id.IsSystem() {
 			switch m.Id.GetSysFunc() {
 			case NOCAN_SYS_CHANNEL_REGISTER:
-				var channel_id Channel
 				var err error
 
+				ChannelToBytes(Channel(-1), channel_bytes[:])
+				status = 0xFF
+
 				channel_expanded, ok := Nodes.ExpandKeywords(m.Id.GetNode(), string(m.Data))
+
 				if ok {
 					channel_id, err = tm.Register(channel_expanded)
 					if err != nil {
 						clog.Warning("NOCAN_SYS_CHANNEL_REGISTER: Failed to register channel %s (expanded from %s) for node %d, %s", channel_expanded, string(m.Data), m.Id.GetNode(), err.Error())
 					} else {
 						clog.Info("NOCAN_SYS_CHANNEL_REGISTER: Registered channel %s for node %d as %d", channel_expanded, m.Id.GetNode(), channel_id)
+						ChannelToBytes(channel_id, channel_bytes[:])
+						status = 0x00
 					}
 				} else {
-					channel_id = -1
 					clog.Warning("NOCAN_SYS_CHANNEL_REGISTER: Failed to expand channel name '%s' for node %d", string(m.Data), m.Id.GetNode())
 				}
-				msg := NewSystemMessage(m.Id.GetNode(), NOCAN_SYS_CHANNEL_REGISTER_ACK, uint8(channel_id), nil)
+				msg := NewSystemMessage(m.Id.GetNode(), NOCAN_SYS_CHANNEL_REGISTER_ACK, status, channel_bytes[:])
 				tm.Port.SendMessage(msg)
 			case NOCAN_SYS_CHANNEL_LOOKUP:
-				var bitmap [8]byte
-				if tm.Lookup(string(m.Data), bitmap[:]) {
-					clog.Info("NOCAN_SYS_CHANNEL_LOOKUP: Node %d succesfully found bitmap for channel %s", m.Id.GetNode(), string(m.Data))
-					msg := NewSystemMessage(m.Id.GetNode(), NOCAN_SYS_CHANNEL_LOOKUP_ACK, 0, bitmap[:])
+				if channel_id, ok := tm.Lookup(string(m.Data)); ok {
+					clog.Info("NOCAN_SYS_CHANNEL_LOOKUP: Node %d succesfully found id %d for channel %s", m.Id.GetNode(), channel_id, string(m.Data))
+					ChannelToBytes(channel_id, channel_bytes[:])
+					msg := NewSystemMessage(m.Id.GetNode(), NOCAN_SYS_CHANNEL_LOOKUP_ACK, 0x00, channel_bytes[:])
 					tm.Port.SendMessage(msg)
 				} else {
 					clog.Warning("NOCAN_SYS_CHANNEL_LOOKUP: Node %d failed to find bitmap for channel %s", m.Id.GetNode(), string(m.Data))
-					msg := NewSystemMessage(m.Id.GetNode(), NOCAN_SYS_CHANNEL_LOOKUP_ACK, 0xFF, nil)
+					ChannelToBytes(Channel(-1), channel_bytes[:])
+					msg := NewSystemMessage(m.Id.GetNode(), NOCAN_SYS_CHANNEL_LOOKUP_ACK, 0xFF, channel_bytes[:])
 					tm.Port.SendMessage(msg)
 				}
 			case NOCAN_SYS_CHANNEL_UNREGISTER:
-				var rval uint8
-				if tm.Unregister(Channel(m.Id.GetSysParam())) {
-					clog.Info("NOCAN_SYS_CHANNEL_UNREGISTER: Node %d successfully unregistered channel %d", m.Id.GetNode(), m.Id.GetSysParam())
-					rval = 0
+				channel_id = BytesToChannel(m.Data[:2])
+				if tm.Unregister(channel_id) {
+					clog.Info("NOCAN_SYS_CHANNEL_UNREGISTER: Node %d successfully unregistered channel %d", m.Id.GetNode(), channel_id)
+					status = 0x00
 				} else {
-					clog.Warning("NOCAN_SYS_CHANNEL_UNREGISTER: Node %d failed to unregister channel %d", m.Id.GetNode(), m.Id.GetSysParam())
-					rval = 0xFF
+					clog.Warning("NOCAN_SYS_CHANNEL_UNREGISTER: Node %d failed to unregister channel %d", m.Id.GetNode(), channel_id)
+					status = 0xFF
 				}
-				msg := NewSystemMessage(m.Id.GetNode(), NOCAN_SYS_CHANNEL_UNREGISTER_ACK, rval, nil)
+				msg := NewSystemMessage(m.Id.GetNode(), NOCAN_SYS_CHANNEL_UNREGISTER_ACK, status, nil)
 				tm.Port.SendMessage(msg)
 			}
 		} else if m.Id.IsPublish() {

@@ -140,20 +140,12 @@ func (canid CanId) SetSysParam(pm uint8) CanId {
 }
 
 func (canid CanId) GetChannel() Channel {
-	var i uint8
-	var base uint8 = uint8(((canid >> 16) & 0x03) << 4)
-	for i = 0; i < 16; i++ {
-		if (canid & (1 << i)) != 0 {
-			return Channel(base + i)
-		}
-	}
-	return -1
+	return Channel(canid & 0xFFFF)
 }
 
 func (canid CanId) SetChannel(channel Channel) CanId {
-	t := ((uint32(channel) >> 4) << 16) | (1 << (uint32(channel) & 0xF))
 	canid &= CanId(0xFFFC0000)
-	canid |= CanId(t)
+	canid |= CanId(channel)
 	return canid
 }
 

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"pannetrat.com/nocan/bitmap"
 	"pannetrat.com/nocan/clog"
 	"pannetrat.com/nocan/intelhex"
 	"strconv"
@@ -22,12 +21,12 @@ type Node int8
 type NodeAttributes map[string]interface{}
 
 type NodeState struct {
-	Active        bool           `json:"-"`
-	Id            Node           `json:"id"`
-	Udid          string         `json:"udid"`
-	LastSeen      time.Time      `json:"last_seen"`
-	Subscriptions [8]byte        `json:"-"`
-	Attributes    NodeAttributes `json:"attributes"`
+	Active        bool             `json:"-"`
+	Id            Node             `json:"id"`
+	Udid          string           `json:"udid"`
+	LastSeen      time.Time        `json:"last_seen"`
+	Subscriptions map[Channel]bool `json:"-"`
+	Attributes    NodeAttributes   `json:"attributes"`
 }
 
 func (ns *NodeState) getStringAttribute(key string) (string, bool) {
@@ -115,7 +114,7 @@ func (nm *NodeModel) LoadFromFile(nodefile string) error {
 			clog.Warning("Node %d appears twice in %s, second instance will be ignored", v.Node, nodefile)
 		} else {
 			clog.Debug("Pre-registering %s as node %d", k, v.Node)
-			nm.States[v.Node] = &NodeState{Active: false, Id: v.Node, Udid: k, Attributes: v.Attributes}
+			nm.States[v.Node] = &NodeState{Active: false, Id: v.Node, Udid: k, Attributes: v.Attributes, Subscriptions: make(map[Channel]bool)}
 			nm.Udids[k] = v.Node
 		}
 	}
@@ -223,7 +222,7 @@ func (nm *NodeModel) Register(node []byte) (Node, error) {
 
 	for i := 1; i < 128; i++ {
 		if nm.States[i] == nil {
-			nm.States[i] = &NodeState{Active: true, Udid: udid, Id: Node(i)}
+			nm.States[i] = &NodeState{Active: true, Udid: udid, Id: Node(i), Subscriptions: make(map[Channel]bool)}
 			nm.Udids[udid] = Node(i)
 			nm.Mutex.Unlock()
 			if err := nm.SaveToFile(); err != nil {
@@ -250,31 +249,23 @@ func (nm *NodeModel) Unregister(node Node) bool {
 	return true
 }
 
-func (nm *NodeModel) Subscribe(node Node, channel_bitmap []byte) bool {
-	if len(channel_bitmap) != 8 {
-		return false
-	}
-
+func (nm *NodeModel) Subscribe(node Node, channel_id Channel) bool {
 	nm.Mutex.Lock()
 	defer nm.Mutex.Unlock()
 
 	if ns := nm.getState(node); ns != nil {
-		bitmap.Bitmap64Add(ns.Subscriptions[:], channel_bitmap)
+		ns.Subscriptions[channel_id] = true
 		return true
 	}
 	return false
 }
 
-func (nm *NodeModel) Unsubscribe(node Node, channel_bitmap []byte) bool {
-	if len(channel_bitmap) != 8 {
-		return false
-	}
-
+func (nm *NodeModel) Unsubscribe(node Node, channel_id Channel) bool {
 	nm.Mutex.Lock()
 	defer nm.Mutex.Unlock()
 
 	if ns := nm.getState(node); ns != nil {
-		bitmap.Bitmap64Sub(ns.Subscriptions[:], channel_bitmap)
+		delete(ns.Subscriptions, channel_id)
 		return true
 	}
 	return false
@@ -300,7 +291,7 @@ func (nm *NodeModel) GetProperties(node Node) *NodeState {
 }
 
 func (nm *NodeModel) DoReboot(node Node) error {
-	nm.Port.SendMessage(NewSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil))
+	nm.Port.SendMessage(NewSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0x01, nil))
 	if nm.Port.WaitForMessage(NewSystemMessageFilter(node, NOCAN_SYS_NODE_BOOT_ACK), DEFAULT_TIMEOUT) == nil {
 		return fmt.Errorf("Node %d could not be rebooted", node)
 	}
@@ -378,7 +369,7 @@ func (nm *NodeModel) DownloadFirmware(state *JobState, node Node, memtype byte, 
 	port := PortManager.CreatePort("firmware-download")
 	defer PortManager.DestroyPort(port)
 
-	port.SendMessage(NewSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil))
+	port.SendMessage(NewSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0x01, nil))
 
 	if port.WaitForMessage(NewSystemMessageFilter(node, NOCAN_SYS_NODE_BOOT_ACK), EXTENDED_TIMEOUT) == nil {
 		err := fmt.Errorf("NOCAN_SYS_NODE_BOOT_ACK failed for node %d", node)
@@ -434,7 +425,7 @@ func (nm *NodeModel) UploadFirmware(state *JobState, node Node, memtype byte, ih
 	port := PortManager.CreatePort("firmware-upload")
 	defer PortManager.DestroyPort(port)
 
-	port.SendMessage(NewSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0, nil))
+	port.SendMessage(NewSystemMessage(node, NOCAN_SYS_NODE_BOOT_REQUEST, 0x01, nil))
 
 	if port.WaitForMessage(NewSystemMessageFilter(node, NOCAN_SYS_NODE_BOOT_ACK), EXTENDED_TIMEOUT) == nil {
 		err := fmt.Errorf("NOCAN_SYS_NODE_BOOT_ACK failed for node %d", node)
@@ -508,16 +499,18 @@ func (nm *NodeModel) Run() {
 				msg := NewSystemMessage(m.Id.GetNode(), NOCAN_SYS_ADDRESS_LOOKUP_ACK, uint8(node_id), m.Data)
 				nm.Port.SendMessage(msg)
 			case NOCAN_SYS_CHANNEL_SUBSCRIBE:
-				if nm.Subscribe(m.Id.GetNode(), m.Data) {
-					clog.Info("NOCAN_SYS_CHANNEL_SUBSCRIBE: Node %d successfully subscribed to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
+				channel_id := BytesToChannel(m.Data)
+				if nm.Subscribe(m.Id.GetNode(), channel_id) {
+					clog.Info("NOCAN_SYS_CHANNEL_SUBSCRIBE: Node %d successfully subscribed to %d", m.Id.GetNode(), channel_id)
 				} else {
-					clog.Warning("NOCAN_SYS_CHANNEL_SUBSCRIBE: Node %d failed to subscribe to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
+					clog.Warning("NOCAN_SYS_CHANNEL_SUBSCRIBE: Node %d failed to subscribe to %d", m.Id.GetNode(), channel_id)
 				}
 			case NOCAN_SYS_CHANNEL_UNSUBSCRIBE:
-				if nm.Unsubscribe(m.Id.GetNode(), m.Data) {
-					clog.Info("NOCAN_SYS_CHANNEL_UNSUBSCRIBE: Node %d successfully unsubscribed to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
+				channel_id := BytesToChannel(m.Data)
+				if nm.Unsubscribe(m.Id.GetNode(), channel_id) {
+					clog.Info("NOCAN_SYS_CHANNEL_UNSUBSCRIBE: Node %d successfully unsubscribed to %d", m.Id.GetNode(), channel_id)
 				} else {
-					clog.Warning("NOCAN_SYS_CHANNEL_UNSUBSCRIBE: Node %d failed to unsubscribe to %v", m.Id.GetNode(), bitmap.Bitmap64ToSlice(m.Data))
+					clog.Warning("NOCAN_SYS_CHANNEL_UNSUBSCRIBE: Node %d failed to unsubscribe to %d", m.Id.GetNode(), channel_id)
 				}
 			}
 		}

@@ -5,10 +5,10 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"net/http"
 	//"pannetrat.com/nocan/clog"
+	"encoding/hex"
 	"pannetrat.com/nocan/model"
 	"pannetrat.com/nocan/view"
 	"strings"
-    "encoding/hex"
 )
 
 type ChannelController struct {
@@ -42,9 +42,9 @@ func TrimLeftSlash(s string) string {
 func (tc *ChannelController) Show(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	channelName := TrimLeftSlash(params.ByName("channel"))
 
-	channel := model.Channels.FindByName(channelName)
+	channel, ok := model.Channels.Lookup(channelName)
 
-	if channel < 0 {
+	if !ok {
 		view.LogHttpError(w, "Channel does not exist", http.StatusNotFound)
 		return
 	}
@@ -63,26 +63,26 @@ func (tc *ChannelController) Show(w http.ResponseWriter, r *http.Request, params
 func (tc *ChannelController) Update(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	channelName := TrimLeftSlash(params.ByName("channel"))
 
-	channel := model.Channels.FindByName(channelName)
+	channel, ok := model.Channels.Lookup(channelName)
 
-	if channel < 0 {
+	if !ok {
 		view.LogHttpError(w, "Channel "+channelName+" does not exist", http.StatusNotFound)
 		return
 	}
 
 	r.ParseForm()
 
-    var dst []byte
-    var err error
+	var dst []byte
+	var err error
 	value := r.Form.Get("value")
-    if len(value)>1 && value[0]=='#' {
-        if dst, err = hex.DecodeString(value[1:]); err!=nil {
-            view.LogHttpError(w, "Error decoding hexadecimal string: " + err.Error(), http.StatusBadRequest)
-            return
-        }
-    } else {
-        dst = []byte(value)
-    }
+	if len(value) > 1 && value[0] == '#' {
+		if dst, err = hex.DecodeString(value[1:]); err != nil {
+			view.LogHttpError(w, "Error decoding hexadecimal string: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	} else {
+		dst = []byte(value)
+	}
 	model.Channels.Publish(channel, dst)
 
 	if !AcceptJSON(r) {
