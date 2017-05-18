@@ -2,3 +2,4 @@
 cmd/nocan
 *.dat
 .DS_Store
+*.hex

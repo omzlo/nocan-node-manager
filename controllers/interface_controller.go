@@ -1,9 +1,9 @@
-package controller
+package controllers
 
 import (
 	"github.com/julienschmidt/httprouter"
 	"net/http"
-	"pannetrat.com/nocan/model"
+	"pannetrat.com/nocan/models"
 	"pannetrat.com/nocan/view"
 	"strconv"
 	"time"
@@ -16,18 +16,18 @@ func NewInterfaceController() *InterfaceController {
 	return &InterfaceController{}
 }
 
-func (dc *InterfaceController) GetInterface(interfName string) *model.InterfaceState {
+func (dc *InterfaceController) GetInterface(interfName string) *models.InterfaceState {
 	interf, err := strconv.Atoi(interfName)
 	if err != nil {
 		return nil
 	}
-	return model.Interfaces.GetInterface(interf)
+	return models.Interfaces.GetInterface(interf)
 }
 
 func (dc *InterfaceController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	var res []int
 
-	model.Interfaces.Each(func(iid int, _ *model.InterfaceState) {
+	models.Interfaces.Each(func(iid int, _ *models.InterfaceState) {
 		res = append(res, int(iid))
 	})
 
@@ -71,9 +71,9 @@ func (dc *InterfaceController) Update(w http.ResponseWriter, r *http.Request, pa
 
 	switch r.Form.Get("c") {
 	case "poweron":
-		err = interf.DoSetPower(model.INTERFACE_POWER_ON)
+		err = interf.DoSetPower(models.INTERFACE_POWER_ON)
 	case "poweroff":
-		err = interf.DoSetPower(model.INTERFACE_POWER_OFF)
+		err = interf.DoSetPower(models.INTERFACE_POWER_OFF)
 	default:
 		view.LogHttpError(w, "missing or incorrect 'c' parameter in request", http.StatusBadRequest)
 		return

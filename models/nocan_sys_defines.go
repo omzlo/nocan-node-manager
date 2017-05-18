@@ -1,4 +1,4 @@
-package model
+package models
 
 const (
 	NOCAN_SYS_ANY                   = 0

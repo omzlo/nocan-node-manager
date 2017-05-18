@@ -1,10 +1,10 @@
-package controller
+package controllers
 
 import (
 	"github.com/julienschmidt/httprouter"
 	"net/http"
 	"pannetrat.com/nocan/clog"
-	"pannetrat.com/nocan/model"
+	"pannetrat.com/nocan/models"
 	"strings"
 )
 
@@ -28,10 +28,10 @@ func NewApplication() *Application {
 
 func (app *Application) Run() {
 	go http.ListenAndServe(":8888", &CheckRouter{app.Router})
-	go model.Channels.Run()
-	go model.Interfaces.Run()
-	go model.Jobs.Run()
-	model.Nodes.Run()
+	go models.Channels.Run()
+	go models.Interfaces.Run()
+	go models.Jobs.Run()
+	models.Nodes.Run()
 }
 
 /****/

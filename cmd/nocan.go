@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"pannetrat.com/nocan"
 	"pannetrat.com/nocan/clog"
-	"pannetrat.com/nocan/controller"
-	"pannetrat.com/nocan/model"
+	"pannetrat.com/nocan/controllers"
+	"pannetrat.com/nocan/models"
 	"strings"
 )
 
@@ -41,13 +41,13 @@ func main() {
 	flag.Parse()
 
 	clog.Debug("Start")
-	model.Nodes.LoadFromFile("nodes.dat")
+	models.Nodes.LoadFromFile("nodes.dat")
 
-	main := controller.NewApplication()
+	main := controllers.NewApplication()
 
 	if len(optDeviceStrings) > 0 {
 		for _, itr := range optDeviceStrings {
-			_, err := model.Interfaces.AddInterface(itr)
+			_, err := models.Interfaces.AddInterface(itr)
 			if err != nil {
 				return
 			}
@@ -57,7 +57,7 @@ func main() {
 	}
 
 	for _, itr := range optChannels {
-		model.Channels.Register(itr)
+		models.Channels.Register(itr)
 	}
 
 	if optLogTask {
@@ -67,7 +67,7 @@ func main() {
 		}
 	}
 
-	homepage := controller.NewHomePageController()
+	homepage := controllers.NewHomePageController()
 
 	main.Router.GET("/api/channels", main.Channels.Index)
 	main.Router.GET("/api/channels/*channel", main.Channels.Show)

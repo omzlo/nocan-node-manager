@@ -1,4 +1,4 @@
-package controller
+package controllers
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"net/http"
 	//"pannetrat.com/nocan/clog"
 	"encoding/hex"
-	"pannetrat.com/nocan/model"
+	"pannetrat.com/nocan/models"
 	"pannetrat.com/nocan/view"
 	"strings"
 )
@@ -21,7 +21,7 @@ func NewChannelController() *ChannelController {
 func (tc *ChannelController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	var res []string
 
-	model.Channels.Each(func(channel model.Channel, state *model.ChannelState) {
+	models.Channels.Each(func(channel models.Channel, state *models.ChannelState) {
 		res = append(res, state.Name)
 	})
 
@@ -42,13 +42,13 @@ func TrimLeftSlash(s string) string {
 func (tc *ChannelController) Show(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	channelName := TrimLeftSlash(params.ByName("channel"))
 
-	channel, ok := model.Channels.Lookup(channelName)
+	channel, ok := models.Channels.Lookup(channelName)
 
 	if !ok {
 		view.LogHttpError(w, "Channel does not exist", http.StatusNotFound)
 		return
 	}
-	content, _ := model.Channels.GetContent(channel)
+	content, _ := models.Channels.GetContent(channel)
 
 	context := view.NewContext(r, string(content))
 
@@ -63,7 +63,7 @@ func (tc *ChannelController) Show(w http.ResponseWriter, r *http.Request, params
 func (tc *ChannelController) Update(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	channelName := TrimLeftSlash(params.ByName("channel"))
 
-	channel, ok := model.Channels.Lookup(channelName)
+	channel, ok := models.Channels.Lookup(channelName)
 
 	if !ok {
 		view.LogHttpError(w, "Channel "+channelName+" does not exist", http.StatusNotFound)
@@ -83,7 +83,7 @@ func (tc *ChannelController) Update(w http.ResponseWriter, r *http.Request, para
 	} else {
 		dst = []byte(value)
 	}
-	model.Channels.Publish(channel, dst)
+	models.Channels.Publish(channel, dst)
 
 	if !AcceptJSON(r) {
 		context := view.NewContext(r, nil)

@@ -1,4 +1,4 @@
-package controller
+package controllers
 
 import (
 	"fmt"
@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"pannetrat.com/nocan/clog"
 	"pannetrat.com/nocan/intelhex"
-	"pannetrat.com/nocan/model"
+	"pannetrat.com/nocan/models"
 	"pannetrat.com/nocan/view"
 	"strconv"
 	"strings"
@@ -21,9 +21,9 @@ func NewNodeController() *NodeController {
 }
 
 func (nc *NodeController) Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	var res []model.Node = make([]model.Node, 0)
+	var res []models.Node = make([]models.Node, 0)
 
-	model.Nodes.Each(func(n model.Node, _ *model.NodeState) {
+	models.Nodes.Each(func(n models.Node, _ *models.NodeState) {
 		res = append(res, n)
 	})
 
@@ -36,22 +36,22 @@ func (nc *NodeController) Index(w http.ResponseWriter, r *http.Request, _ httpro
 	}
 }
 
-func (nc *NodeController) GetNode(nodeName string) (model.Node, bool) {
+func (nc *NodeController) GetNode(nodeName string) (models.Node, bool) {
 	if len(nodeName) > 3 {
 		var uid [8]byte
-		if err := model.StringToUdid(nodeName, uid[:]); err != nil {
-			return model.Node(-1), false
+		if err := models.StringToUdid(nodeName, uid[:]); err != nil {
+			return models.Node(-1), false
 		}
-		return model.Nodes.ByUdid(uid)
+		return models.Nodes.ByUdid(uid)
 	}
 
 	node, err := strconv.Atoi(nodeName)
 
 	if err != nil {
-		return model.Node(-1), false
+		return models.Node(-1), false
 	}
 
-	return model.Node(node), true
+	return models.Node(node), true
 }
 
 func (nc *NodeController) Show(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
@@ -61,7 +61,7 @@ func (nc *NodeController) Show(w http.ResponseWriter, r *http.Request, params ht
 		return
 	}
 
-	props := model.Nodes.GetProperties(node)
+	props := models.Nodes.GetProperties(node)
 	if props == nil {
 		http.Error(w, "Node does not exist", http.StatusNotFound)
 		return
@@ -83,7 +83,7 @@ func (nc *NodeController) Update(w http.ResponseWriter, r *http.Request, params 
 		return
 	}
 
-	if model.Nodes.GetProperties(node) == nil {
+	if models.Nodes.GetProperties(node) == nil {
 		http.Error(w, "Node does not exist", http.StatusNotFound)
 		return
 	}
@@ -94,11 +94,11 @@ func (nc *NodeController) Update(w http.ResponseWriter, r *http.Request, params 
 
 	switch r.Form.Get("c") {
 	case "reboot":
-		if err := model.Nodes.DoReboot(node); err != nil {
+		if err := models.Nodes.DoReboot(node); err != nil {
 			view.LogHttpError(w, err.Error(), http.StatusServiceUnavailable)
 		}
 	case "ping":
-		if err := model.Nodes.DoPing(node); err != nil {
+		if err := models.Nodes.DoPing(node); err != nil {
 			view.LogHttpError(w, err.Error(), http.StatusServiceUnavailable)
 		}
 	default:
@@ -107,7 +107,7 @@ func (nc *NodeController) Update(w http.ResponseWriter, r *http.Request, params 
 	/* success */
 }
 
-func (nc *NodeController) GetFirmwareNodeAndType(w http.ResponseWriter, r *http.Request, params httprouter.Params) (model.Node, byte, bool) {
+func (nc *NodeController) GetFirmwareNodeAndType(w http.ResponseWriter, r *http.Request, params httprouter.Params) (models.Node, byte, bool) {
 	node, ok := nc.GetNode(params.ByName("node"))
 	if !ok {
 		view.LogHttpError(w, "Node does not exist", http.StatusNotFound)
@@ -161,8 +161,8 @@ func (nc *NodeController) ShowFirmware(w http.ResponseWriter, r *http.Request, p
 		fwsize = uint32(fwsize64)
 	}
 
-	jobid := model.Jobs.CreateJob(func(state *model.JobState) {
-		model.Nodes.DownloadFirmware(state, node, fwtype, fwsize)
+	jobid := models.Jobs.CreateJob(func(state *models.JobState) {
+		models.Nodes.DownloadFirmware(state, node, fwtype, fwsize)
 	})
 
 	w.Header().Set("Location", fmt.Sprintf("/api/jobs/%d", jobid))
@@ -191,8 +191,8 @@ func (nc *NodeController) CreateFirmware(w http.ResponseWriter, r *http.Request,
 
 	clog.Debug("Uploaded firmware '%s' is %d bytes", header.Filename, ihex.Size)
 
-	jobid := model.Jobs.CreateJob(func(state *model.JobState) {
-		model.Nodes.UploadFirmware(state, node, fwtype, ihex)
+	jobid := models.Jobs.CreateJob(func(state *models.JobState) {
+		models.Nodes.UploadFirmware(state, node, fwtype, ihex)
 	})
 
 	w.Header().Set("Location", fmt.Sprintf("/api/jobs/%d", jobid))

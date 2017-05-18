@@ -1,4 +1,4 @@
-package model
+package models
 
 /*
 #include "serial_can.h"
